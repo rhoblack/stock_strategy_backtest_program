@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.routes_backtests import router as backtests_router
 from app.api.routes_conditions import router as conditions_router
 from app.api.routes_strategies import router as strategies_router
 
@@ -39,3 +40,4 @@ def health() -> dict:
 # 도메인 라우터
 app.include_router(conditions_router)
 app.include_router(strategies_router)
+app.include_router(backtests_router)

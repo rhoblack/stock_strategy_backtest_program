@@ -44,7 +44,7 @@
 | 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | ✅ 완료 (9/9) |
 | 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | ✅ 완료 (6/6) |
 | 3 | GUI 전략 빌더 | ✅ 완료 (7/7) |
-| 4 | 백테스트 실행/결과 화면 | ⬜ 미시작 (다음) |
+| 4 | 백테스트 실행/결과 화면 | 🔄 진행 중 (1/3) |
 | 5 | 종목 봉차트 + 매수/매도 마커 | ⬜ 미시작 |
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
 | 7 | CSV/ZIP Export | ⬜ 미시작 |
@@ -71,6 +71,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [005-backtest-api](./2026-05-10-005-backtest-api.md) | 4 | main | ✅ | Backtest API + 합성 데이터 dev 모드 + 6건 |
 | 2026-05-10 | [004-strategy-save](./2026-05-10-004-strategy-save.md) | 3 | main | ✅ | **Phase 3 완료**: Strategy CRUD API + serialize + Save+redirect + 9건 |
 | 2026-05-10 | [003-preview-validation](./2026-05-10-003-preview-validation.md) | 3 | main | ✅ | StrategyPreviewPanel + StrategyValidationPanel + 10건 |
 | 2026-05-10 | [002-condition-editor-panel](./2026-05-10-002-condition-editor-panel.md) | 3 | main | ✅ | ConditionEditorPanel parameters 자동 폼 + 즉시 반영 + 4건 |

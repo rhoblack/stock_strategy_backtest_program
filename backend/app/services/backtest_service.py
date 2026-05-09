@@ -90,12 +90,23 @@ def create_backtest_run(
     return run
 
 
-def run_backtest(session: Session, run_id: int, df: pd.DataFrame) -> BacktestResult:
+def run_backtest(
+    session: Session, run_id: int, df: pd.DataFrame | None = None
+) -> BacktestResult:
     """주어진 df에 대해 엔진을 실행하고 결과를 영속화. 동기 실행.
 
-    df는 단일 종목 시계열. 멀티 종목은 후속 단계에서 추가.
+    df=None이면 universe_config의 synthetic_seed/synthetic_n로 합성 데이터 생성
+    (Phase 14 데이터 파이프라인 미구현 시 dev 모드).
     """
     run = _get_run(session, run_id)
+
+    if df is None:
+        from app.services.synthetic_data import build_synthetic_series
+
+        cfg = run.universe_config_json or {}
+        seed = int(cfg.get("synthetic_seed", 42))
+        n = int(cfg.get("synthetic_n", 90))
+        df = build_synthetic_series(seed=seed, n=n, base_date=run.start_date)
 
     # 상태 전이: PENDING → RUNNING
     run.status = BacktestStatus.RUNNING
