@@ -39,6 +39,8 @@ tests/           pytest 단위/통합 테스트
 
 ## 자주 쓰는 명령
 
+### 테스트 / 린트
+
 ```bash
 pytest                         # 전체 테스트
 pytest tests/strategy/         # 모듈별 실행
@@ -46,3 +48,23 @@ pytest -k registry             # 패턴 매칭
 ruff check app tests           # 린트
 ruff format app tests          # 포맷
 ```
+
+### DB 마이그레이션 (Alembic)
+
+```bash
+# 운영/dev DB에 최신 스키마 적용
+alembic upgrade head
+
+# 새 마이그레이션 자동 생성 (모델 변경 후)
+alembic revision --autogenerate -m "변경 설명"
+
+# 현재 적용된 revision 확인
+alembic current
+
+# 한 단계 롤백
+alembic downgrade -1
+```
+
+테스트 환경은 `init_db(engine)` (create_all)을 사용. 운영/dev는 alembic.
+
+DB URL은 `alembic.ini`의 `sqlalchemy.url` 또는 환경변수 `ALEMBIC_DATABASE_URL`로 override.
