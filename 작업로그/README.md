@@ -43,15 +43,15 @@
 | 0 | CLAUDE.md + 코딩 에이전트 + 작업 로그 시스템 | ✅ 완료 |
 | 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | ✅ 완료 (9/9) |
 | 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | ✅ 완료 (6/6) |
-| 3 | GUI 전략 빌더 | ⬜ 미시작 (다음) |
+| 3 | GUI 전략 빌더 | 🔄 진행 중 (1/7) |
 | 4 | 백테스트 실행/결과 화면 | ⬜ 미시작 |
 | 5 | 종목 봉차트 + 매수/매도 마커 | ⬜ 미시작 |
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
 | 7 | CSV/ZIP Export | ⬜ 미시작 |
 
-**현재 작업 중**: 없음. **Phase 2 완료** ✅ → 다음 세션이 Phase 3 (GUI 전략 빌더)를 시작 가능.
+**현재 작업 중**: 없음 (Phase 3 / Step 2 — 프론트엔드 골격 — 다음에 시작).
 
-**환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. **266/266 통과** + ruff All checks passed.
+**환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. **272/272 통과** + ruff All checks passed. Node v24 + npm 11 사용 가능.
 
 **MVP end-to-end 백엔드 완성**: 전략 생성 → 백테스트 실행 → 영속화 → 요약 조회까지 동작. Alembic 마이그레이션으로 운영 환경 준비.
 
@@ -71,6 +71,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-09 | [016-fastapi-conditions-api](./2026-05-09-016-fastapi-conditions-api.md) | 3 | main | ✅ | FastAPI 도입 + GET /api/conditions (메타데이터 자동 노출) + 6건 |
 | 2026-05-09 | [015-alembic](./2026-05-09-015-alembic.md) | 2 | main | ✅ | **Phase 2 완료**: Alembic 도입 + baseline 마이그레이션 + 회귀 검증 3건 |
 | 2026-05-09 | [014-services-layer](./2026-05-09-014-services-layer.md) | 2 | main | ✅ | strategy_service + backtest_service (Phase 1↔Phase 2 통합 + end-to-end 영속화) + 15건 |
 | 2026-05-09 | [013-daily-equity-model](./2026-05-09-013-daily-equity-model.md) | 2 | main | ✅ | DailyEquity 모델 (UniqueConstraint + 복합 인덱스) + 5건 |
@@ -118,15 +119,13 @@
 
 ## Phase 3 다음 작업 후보 (GUI 전략 빌더)
 
-설계서 19절 Phase 3 + 01번 / 11번 문서:
-
-1. ⏭ **다음**: 백엔드 `GET /api/conditions` 엔드포인트 (FastAPI 도입 + condition_definitions.get_condition_catalog 노출)
-2. 프론트엔드 골격 (React + TypeScript + Vite + TanStack Query/Table + 차트 라이브러리)
+1. ✅ FastAPI + GET /api/conditions — 2026-05-09-016
+2. ⏭ **다음**: 프론트엔드 골격 (React + TypeScript + Vite + TanStack Query/Table)
 3. StrategyBuilderPage 골격 (3열 레이아웃)
 4. BlockPalette (메타데이터 기반 자동 생성)
 5. ConditionEditorPanel (parameters 메타로 폼 자동)
 6. StrategyPreviewPanel + StrategyValidationPanel
-7. 전략 저장 (`POST /api/strategies` + 프론트 연동)
+7. 전략 저장 (POST /api/strategies + 프론트 연동) — Phase 3 마지막 step에서 push
 
 각 단계는 별도 작업 로그 파일을 만들어 진행합니다.
 
