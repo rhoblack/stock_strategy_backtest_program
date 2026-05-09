@@ -1,0 +1,90 @@
+# 작업 로그 인덱스
+
+이 폴더는 프로젝트 진행 중 수행한 모든 코딩 작업의 로그를 보관합니다.
+
+**모든 새 세션은 이 파일을 가장 먼저 읽고 시작합니다.**
+
+---
+
+## 사용 규칙
+
+### 새 작업 시작 시
+1. 이 README.md를 읽어 현재 Phase 상태와 최근 작업을 파악
+2. `_TEMPLATE.md`를 복사해 새 로그 파일 생성
+   - 명명 규칙: `YYYY-MM-DD-NNN-짧은-설명.md` (예: `2026-05-09-001-rsi-condition.md`)
+   - NNN은 그 날의 작업 일련번호 (001부터)
+3. Plan 섹션을 먼저 작성 (체크리스트 형태)
+4. 실행 (직접 또는 에이전트 호출)
+5. 완료 시 본 README.md의 "최근 작업"과 "현재 Phase 상태" 갱신
+
+### 에이전트 호출 시
+메인 세션이 에이전트를 호출할 때 작업 로그 파일 경로를 전달:
+> "작업로그/2026-05-09-001-rsi-condition.md를 참고해서 작업하고, Execution/Tests/Result 섹션을 채워줘"
+
+에이전트는 `status` 변경과 본 README.md 갱신은 하지 않습니다 (메인 세션 담당).
+
+### 다음 세션이 참고할 정보
+- 어떤 작업이 끝났는지 (completed)
+- 어떤 작업이 진행 중인지 (in_progress)
+- 어떤 작업이 블록되었는지 (blocked) — 이유 함께 기록
+- 다음에 할 작업의 후보 (Follow-ups에 적힌 항목들)
+
+---
+
+## 현재 Phase 상태
+
+설계서 (`stock_strategy_lab_program_introduction.md` 12절) 기준 MVP Phase 진행 현황.
+
+| Phase | 내용 | 상태 |
+|---:|---|---|
+| 0 | 설계 문서 작성 + 리뷰 반영 | ✅ 완료 |
+| 0 | CLAUDE.md + 코딩 에이전트 + 작업 로그 시스템 | ✅ 완료 |
+| 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | ⬜ 미시작 |
+| 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | ⬜ 미시작 |
+| 3 | GUI 전략 빌더 | ⬜ 미시작 |
+| 4 | 백테스트 실행/결과 화면 | ⬜ 미시작 |
+| 5 | 종목 봉차트 + 매수/매도 마커 | ⬜ 미시작 |
+| 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
+| 7 | CSV/ZIP Export | ⬜ 미시작 |
+
+**현재 작업 중**: 없음 (다음 세션이 Phase 1을 시작해야 함)
+
+---
+
+## 최근 작업 (최신 순)
+
+아직 코딩 작업 로그 없음. 첫 작업이 추가되면 아래에 항목으로 기록합니다.
+
+```text
+| 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
+|---|---|---|---|---|---|
+| 2026-05-09 | 001-... | 1 | condition-author | ✅ | RSI 조건 함수 추가 |
+```
+
+| 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
+|---|---|---|---|---|---|
+| (아직 없음) | | | | | |
+
+---
+
+## Phase 1 다음 작업 후보
+
+Phase 1을 시작할 때 아래 순서로 진행하는 것을 권장 (`stock_strategy_lab_software_architecture.md` 19절):
+
+1. 프로젝트 골격 셋업 (`backend/` 폴더 + pyproject.toml + 기본 모듈 디렉토리)
+2. ConditionRegistry 코어 구현 (`strategy/registry.py`)
+3. compare 유틸리티 + indicators.py (이동평균, RSI, MACD)
+4. 기본 조건 5개 작성 (price_vs_ma / ma_cross / volume_ratio / rsi_level / take_profit)
+5. StrategyEngine 구현 (entry / exit_signal / filters)
+6. 단일 종목 BacktestEngine 골격 (날짜별 루프)
+7. ExecutionModel + Portfolio + Position + TradeGroup
+8. Metrics (총수익률, MDD, 승률, 거래횟수)
+9. Phase 1 통합 테스트 (Golden test fixture 1번 시나리오)
+
+각 단계는 별도 작업 로그 파일을 만들어 진행합니다.
+
+---
+
+## 블록된 작업
+
+(없음)

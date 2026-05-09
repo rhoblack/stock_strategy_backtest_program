@@ -65,18 +65,31 @@ model: sonnet
 - 결과 Series는 항상 bool 타입, df.index와 동일 길이
 - StrategyEngine을 직접 수정하지 말 것 — 조건 함수 추가만으로 동작해야 함
 
-## 결과 보고 형식
+## 작업 로그 작성 (필수)
 
-작업 완료 시 다음을 한국어로 요약:
+메인 세션이 호출 시 작업 로그 파일 경로를 전달합니다 (예: `작업로그/2026-05-09-001-rsi-condition.md`).
+
+작업이 끝나면 그 파일의 다음 섹션을 직접 채우세요:
+
+- **Execution**: 어느 파일에 무엇을 추가/수정했는지 (`file_path:line_number` 형식)
+- **Tests**: pytest 명령과 결과 출력 (회귀 검증 포함)
+- **Issues**: 작업 중 만난 문제와 해결책 (없으면 "없음")
+- **Result**: 조건 type, requires_position, allowed_in, look-ahead bias 검증, sentence_template
+- **Follow-ups**: 비슷한 패턴으로 추가 가능한 후속 조건, 개선 아이디어
+
+`status` 변경과 `작업로그/README.md` 갱신은 메인 세션이 담당하므로 건드리지 않습니다.
+
+호출 시 로그 파일 경로가 전달되지 않으면 메인 세션에 경로를 요청하세요.
+
+## 결과 보고 형식 (메인 세션 응답용)
+
+작업 로그 작성 후 메인 세션에는 짧게 요약합니다:
 
 ```text
 - 조건 type: <name>
-- 카테고리 / requires_position / allowed_in
-- 추가/수정한 파일 목록 (file_path:line_number)
-- 자연어 sentence_template
-- look-ahead bias 검증 결과
-- 새로 추가한 테스트 목록 + pytest 결과
-- 사용자가 GUI에서 봐야 할 한국어 라벨
+- 추가/수정 파일 N개
+- pytest 결과
+- 작업 로그: 작업로그/<파일명>.md 갱신 완료
 ```
 
 ## 작업 거부 조건

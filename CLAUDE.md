@@ -88,3 +88,52 @@ Phase 7. CSV/ZIP Export
 - 정책/스키마 변경은 항상 **문서 먼저, 코드는 나중**. 13/14 정책 문서 또는 02 schema 문서를 먼저 갱신.
 - 백테스트 결과의 재현성을 깨는 변경(priority, 일중 처리, 세율, 호가 단위 등)은 Golden test fixture(12 testing 15절)로 회귀 검증.
 - Git 커밋 메시지는 한국어. 기존 커밋 메시지 스타일 참고.
+
+## 작업 로그 시스템 (필수)
+
+이 프로젝트는 세션 간 컨텍스트 인계를 위해 `작업로그/` 폴더에 모든 코딩 작업의 로그를 남깁니다.
+
+### 새 세션 시작 시
+
+**가장 먼저 `작업로그/README.md`를 읽으세요.** 다음 정보를 확인:
+- 현재 Phase 상태 표
+- 최근 작업 표 (최신 5~10개)
+- 진행 중인 작업 (status: in_progress)
+- 블록된 작업 (status: blocked, 이유 함께 확인)
+- Phase 1 다음 작업 후보 (Phase 1 진행 중일 때)
+
+이미 진행 중인 작업이 있으면 그 로그 파일을 먼저 읽어 이어서 진행합니다.
+
+### 새 작업 시작 시
+
+1. `작업로그/_TEMPLATE.md`를 복사해 새 로그 파일 생성
+   - 명명 규칙: `YYYY-MM-DD-NNN-짧은-설명.md`
+   - 예: `작업로그/2026-05-09-001-rsi-condition.md`
+2. frontmatter (date, agent, phase, status, related_docs) 작성
+3. **Plan 섹션을 체크리스트로 먼저 작성** — 실행 전 무엇을 할지 명확히
+4. status를 `in_progress`로 변경
+5. 실행 시작
+
+### 에이전트 호출 시
+
+메인 세션이 에이전트를 호출할 때 작업 로그 파일 경로를 함께 전달합니다.
+
+> "작업로그/2026-05-09-001-rsi-condition.md를 참고해서 RSI 조건을 추가해줘. 작업 후 Execution / Tests / Result 섹션을 채워줘."
+
+에이전트는 Execution / Tests / Result / Issues 섹션을 채우지만, **status 변경과 README.md 갱신은 메인 세션이 담당**합니다.
+
+### 작업 완료 시 (메인 세션 책임)
+
+`_TEMPLATE.md` 하단의 "메인 세션 마무리 체크" 항목을 모두 수행:
+
+1. 로그 파일의 `status: completed`로 변경
+2. `작업로그/README.md` "최근 작업" 표에 1행 추가
+3. Phase 상태가 변경됐으면 Phase 표 갱신
+4. Follow-ups 중 다음 작업 후보로 승격할 항목을 README의 "Phase N 다음 작업 후보"에 옮김
+
+### 블록 / 중단 시
+
+작업이 블록되거나 일시 중단되면:
+- status를 `blocked` 또는 `in_progress`로 유지
+- 블록 사유와 해소 조건을 Issues 섹션에 명시
+- README.md "블록된 작업" 섹션에 항목 추가

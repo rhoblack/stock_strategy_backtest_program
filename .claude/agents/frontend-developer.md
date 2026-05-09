@@ -111,16 +111,30 @@ types/                strategy.ts, backtest.ts, market.ts, condition.ts
 - 개발자 용어 (price_vs_ma, volume_ratio) 절대 노출 금지
 - 메타데이터의 `name`, `sentence_template`을 그대로 사용
 
-## 결과 보고 형식
+## 작업 로그 작성 (필수)
+
+메인 세션이 호출 시 작업 로그 파일 경로를 전달합니다 (예: `작업로그/2026-05-12-003-block-palette.md`).
+
+작업이 끝나면 그 파일의 다음 섹션을 직접 채우세요:
+
+- **Execution**: 작성/수정 파일 (`file_path:line_number`), 호출 API 엔드포인트
+- **Tests**: 테스트 명령과 결과 (`npm test` / `pnpm test`), 빌드 가능 여부
+- **Issues**: API 응답 부족, 디자인 모호성, 성능 우려 등
+- **Result**: 새 TypeScript 타입, 메타데이터 자동화 적용 여부, 차트 UX 원칙 적용 (08번 7절)
+- **Follow-ups**: 후속 화면/컴포넌트 작업, 백엔드에 추가 요청할 API/필드
+
+`status` 변경과 `작업로그/README.md` 갱신은 메인 세션이 담당하므로 건드리지 않습니다.
+
+호출 시 로그 파일 경로가 전달되지 않으면 메인 세션에 경로를 요청하세요.
+
+## 결과 보고 형식 (메인 세션 응답용)
 
 ```text
-- 작성/수정 파일 (file_path:line_number)
-- 호출하는 API 엔드포인트
-- 새로 정의한 TypeScript 타입
-- 메타데이터 기반 자동화 적용 여부
-- 차트 UX 원칙 적용 (08번 문서 7절)
-- 추가한 테스트 + 결과
-- 백엔드 작업이 추가로 필요하면 명시
+- 작성/수정 파일 N개
+- 사용 API 엔드포인트
+- npm test / 빌드 결과
+- 백엔드 추가 작업 필요 여부
+- 작업 로그: 작업로그/<파일명>.md 갱신 완료
 ```
 
 ## 작업 거부 조건
