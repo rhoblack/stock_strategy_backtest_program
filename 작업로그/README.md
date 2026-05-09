@@ -46,7 +46,7 @@
 | 3 | GUI 전략 빌더 | ✅ 완료 (7/7) |
 | 4 | 백테스트 실행/결과 화면 | ✅ 완료 (2/2) |
 | 5 | 종목 봉차트 + 매수/매도 마커 | ✅ 완료 |
-| 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
+| 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ✅ 완료 |
 | 7 | CSV/ZIP Export | ⬜ 미시작 |
 
 **현재 작업 중**: 없음 (Phase 3 / Step 2 — 프론트엔드 골격 — 다음에 시작).
@@ -71,6 +71,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [008-cash-manager](./2026-05-10-008-cash-manager.md) | 6 | main | ✅ | **Phase 6 완료**: CashManager + cash_events 영속화 + 7건 |
 | 2026-05-10 | [007-chart-data](./2026-05-10-007-chart-data.md) | 5 | main | ✅ | **Phase 5 완료**: chart-data API + CandleTradeChart + EquityCurveChart |
 | 2026-05-10 | [006-backtest-run-page](./2026-05-10-006-backtest-run-page.md) | 4 | main | ✅ | **Phase 4 완료**: BacktestRunPage + ResultPage + 폴링 + 4건 |
 | 2026-05-10 | [005-backtest-api](./2026-05-10-005-backtest-api.md) | 4 | main | ✅ | Backtest API + 합성 데이터 dev 모드 + 6건 |

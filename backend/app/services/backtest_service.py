@@ -28,9 +28,11 @@ from app.backtest.execution import ExecutionModel
 from app.backtest.metrics import calculate_metrics
 from app.core.exceptions import BacktestRunNotFoundError
 from app.models.backtest import BacktestResult, BacktestRun
+from app.models.cash_event import CashEvent
 from app.models.daily_equity import DailyEquity
 from app.models.enums import BacktestStatus, TradeExecutionType
 from app.models.trade import TradeExecution, TradeGroup
+from app.portfolio.cash_manager import CashManager
 from app.portfolio.portfolio import Portfolio
 from app.services.strategy_service import get_strategy
 from app.strategy.engine import StrategyEngine
@@ -135,11 +137,14 @@ def run_backtest(
             ),
             initial_cash=run.initial_cash,
         )
+        cash_manager = CashManager(run.strategy_snapshot_json.get("cash_management"))
+
         engine = BacktestEngine(
             StrategyEngine(run.strategy_snapshot_json),
             portfolio,
             execution_model,
             config,
+            cash_manager=cash_manager,
         )
 
         engine_result = engine.run(df)
@@ -149,6 +154,7 @@ def run_backtest(
         backtest_result = _persist_summary(session, run, metrics)
         _persist_trade_groups_and_executions(session, run, engine_result.trade_executions)
         _persist_daily_equity(session, run, engine_result.daily_equity)
+        _persist_cash_events(session, run, engine.cash_events)
 
         # 상태 전이: RUNNING → COMPLETED
         run.status = BacktestStatus.COMPLETED
@@ -350,3 +356,27 @@ def _persist_daily_equity(
     ]
     session.add_all(rows)
     session.flush()
+
+
+def _persist_cash_events(session: Session, run: BacktestRun, events: list[dict]) -> None:
+    """CashManager 이벤트 영속화 (07번 10절)."""
+    rows = [
+        CashEvent(
+            run_id=run.id,
+            date=ev["date"],
+            event_type=ev.get("event_type", "cash_shortage"),
+            cash_before=ev.get("cash_before", 0.0),
+            required_cash=ev.get("required_cash"),
+            cash_after=ev.get("cash_after", 0.0),
+            action=ev.get("action"),
+            symbol=ev.get("symbol"),
+            sell_quantity=ev.get("sell_quantity"),
+            sell_amount=ev.get("sell_amount"),
+            reason=ev.get("reason"),
+            created_at=_utcnow(),
+        )
+        for ev in events
+    ]
+    if rows:
+        session.add_all(rows)
+        session.flush()

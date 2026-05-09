@@ -41,11 +41,15 @@ class BacktestEngine:
         portfolio: Portfolio,
         execution_model: ExecutionModel,
         config: BacktestConfig,
+        cash_manager=None,  # CashManager | None
     ):
         self.strategy_engine = strategy_engine
         self.portfolio = portfolio
         self.execution_model = execution_model
         self.config = config
+        self.cash_manager = cash_manager
+        # cash_events 누적 (서비스가 영속화)
+        self.cash_events: list[dict] = []
 
     def run(self, df: pd.DataFrame) -> BacktestResult:
         """단일 종목 df에 대해 백테스트를 실행하고 결과를 반환.
@@ -211,7 +215,7 @@ class BacktestEngine:
         today,
         result: BacktestResult,
     ) -> None:
-        """매수 시도. 갭 초과 / 거래정지 / 예수금 부족 시 skip."""
+        """매수 시도. 갭 초과 / 거래정지 / 예수금 부족(CashManager 시도) 시 skip."""
         next_open = float(row["next_open"])
         prev_close = float(row["adj_close"])
 
@@ -224,6 +228,23 @@ class BacktestEngine:
         gap_pct = (next_open - prev_close) / prev_close * 100
         if gap_pct > self.config.max_gap_pct_for_entry:
             return
+
+        # 사전 fund 확보 (CashManager 옵션)
+        if self.cash_manager is not None and self.cash_manager.enabled:
+            # 추정 비용으로 미리 cash 확보 시도
+            est_price = self.execution_model.apply_slippage_and_tick(
+                next_open, side="buy", market=self.config.market
+            )
+            est_quantity = int(self.config.position_size_amount // max(est_price, 1))
+            if est_quantity > 0:
+                est_cost = self.execution_model.calculate_buy_cost(est_price, est_quantity)
+                events = self.cash_manager.handle_shortage(
+                    self.portfolio,
+                    required_cash=est_cost,
+                    on_date=today,
+                    price_provider=lambda s, _d: float(row["adj_close"]),
+                )
+                self.cash_events.extend(events)
 
         # 슬리피지 + 호가 단위 적용
         exec_price = self.execution_model.apply_slippage_and_tick(

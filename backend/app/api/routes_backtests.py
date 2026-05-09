@@ -14,6 +14,7 @@ from app.core.exceptions import BacktestRunNotFoundError, StrategyNotFoundError
 from app.db.session import make_session_factory
 from app.main_state import get_engine
 from app.models.backtest import BacktestRun, BacktestStatus
+from app.models.cash_event import CashEvent
 from app.models.daily_equity import DailyEquity
 from app.models.trade import TradeExecution, TradeGroup
 from app.schemas.backtest import BacktestCreate, BacktestRunOut, BacktestSummaryOut
@@ -218,6 +219,34 @@ def list_daily_equity(run_id: int, session: Session = Depends(get_db_session)):
                 "positions_count": eq.positions_count,
             }
             for eq in rows
+        ],
+        "total_count": len(rows),
+    }
+
+
+@router.get("/{run_id}/cash-events", summary="예수금 이벤트")
+def list_cash_events(run_id: int, session: Session = Depends(get_db_session)):
+    rows = (
+        session.query(CashEvent)
+        .filter_by(run_id=run_id)
+        .order_by(CashEvent.date)
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "date": ev.date.isoformat(),
+                "event_type": ev.event_type,
+                "cash_before": ev.cash_before,
+                "required_cash": ev.required_cash,
+                "cash_after": ev.cash_after,
+                "action": ev.action,
+                "symbol": ev.symbol,
+                "sell_quantity": ev.sell_quantity,
+                "sell_amount": ev.sell_amount,
+                "reason": ev.reason,
+            }
+            for ev in rows
         ],
         "total_count": len(rows),
     }

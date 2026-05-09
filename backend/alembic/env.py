@@ -67,7 +67,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            render_as_batch=is_sqlite,  # SQLite ALTER TABLE 호환
+            render_as_batch=False,  # batch mode가 일부 op.create_table을 silent skip시키는 이슈
         )
 
         with context.begin_transaction():

@@ -5,6 +5,7 @@
 """
 
 from app.models.backtest import BacktestResult, BacktestRun
+from app.models.cash_event import CashEvent
 from app.models.daily_equity import DailyEquity
 from app.models.enums import BacktestStatus, TradeExecutionType
 from app.models.strategy import Strategy, StrategyVersion
@@ -15,6 +16,7 @@ __all__ = [
     "BacktestResult",
     "BacktestRun",
     "BacktestStatus",
+    "CashEvent",
     "DailyEquity",
     "Strategy",
     "StrategyVersion",
