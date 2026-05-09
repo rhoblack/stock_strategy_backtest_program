@@ -39,7 +39,7 @@
 |---:|---|---|
 | 0 | 설계 문서 작성 + 리뷰 반영 | ✅ 완료 |
 | 0 | CLAUDE.md + 코딩 에이전트 + 작업 로그 시스템 | ✅ 완료 |
-| 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | 🔄 진행 중 (7/9) |
+| 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | 🔄 진행 중 (8/9) |
 | 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | ⬜ 미시작 |
 | 3 | GUI 전략 빌더 | ⬜ 미시작 |
 | 4 | 백테스트 실행/결과 화면 | ⬜ 미시작 |
@@ -47,9 +47,9 @@
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
 | 7 | CSV/ZIP Export | ⬜ 미시작 |
 
-**현재 작업 중**: 없음 (Phase 1 / Step 8 — Metrics — 다음에 시작)
+**현재 작업 중**: 없음 (Phase 1 / Step 9 — Golden test fixture — 다음에 시작)
 
-**환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. 197/197 통과 상태.
+**환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. 210/210 통과 상태.
 
 **MVP 단일 종목 백테스트 동작 가능**: StrategyEngine + ExecutionModel + Portfolio + BacktestEngine 조립으로 end-to-end 단일 종목 백테스트 실행 가능. 정확성 정책 13.3/13.4/13.16 적용 완료.
 
@@ -69,6 +69,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-09 | [008-metrics](./2026-05-09-008-metrics.md) | 1 | main | ✅ | calculate_metrics (12개 지표, trade_group 단위 집계) + 13건 테스트 |
 | 2026-05-09 | [007-backtest-engine](./2026-05-09-007-backtest-engine.md) | 1 | main (backtest-engine-developer 대행) | ✅ | 단일 종목 BacktestEngine (정확성 정책 13.3/13.4/13.16 적용) + 13건 테스트 |
 | 2026-05-09 | [006-execution-portfolio](./2026-05-09-006-execution-portfolio.md) | 1 | main (backtest-engine-developer 대행) | ✅ | ExecutionModel (호가/세율 시계열) + Portfolio (trade_groups 부분매도 + FIFO) + 70건 테스트 |
 | 2026-05-09 | [005-strategy-engine](./2026-05-09-005-strategy-engine.md) | 1 | main | ✅ | StrategyEngine (entry/exit_signal/filters + AND/OR/GROUP) + 17건 테스트 |
@@ -90,7 +91,8 @@ Phase 1을 진행 중. 단계 순서 (`stock_strategy_lab_software_architecture.
 5. ✅ StrategyEngine 구현 — 2026-05-09-005 완료
 6. ✅ ExecutionModel + Portfolio (TradeGroup) — 2026-05-09-006 완료
 7. ✅ 단일 종목 BacktestEngine — 2026-05-09-007 완료
-8. ⏭ **다음**: Metrics (총수익률/MDD/승률/거래 횟수/평균 보유일/Profit Factor)
+8. ✅ Metrics — 2026-05-09-008 완료
+9. ⏭ **다음 (Phase 1 마지막)**: Golden test fixture (12번 15절) — Phase 1 통합/회귀 보증
 4. 기본 조건 5개 작성 (price_vs_ma / ma_cross / volume_ratio / rsi_level / take_profit)
 5. StrategyEngine 구현 (entry / exit_signal / filters)
 6. 단일 종목 BacktestEngine 골격 (날짜별 루프)
