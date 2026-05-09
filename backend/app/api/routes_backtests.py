@@ -252,6 +252,54 @@ def list_cash_events(run_id: int, session: Session = Depends(get_db_session)):
     }
 
 
+@router.get("/{run_id}/export/{kind}", summary="CSV/ZIP Export (09번 문서)")
+def export(run_id: int, kind: str, session: Session = Depends(get_db_session)):
+    """kind: summary | trades | daily-equity | cash-events | strategy | zip."""
+    from fastapi.responses import Response
+
+    from app.services import csv_exporter
+
+    run = session.get(BacktestRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail={"code": "BACKTEST_RUN_NOT_FOUND"})
+
+    csv_kinds = {
+        "summary": ("summary.csv", csv_exporter.export_summary_csv),
+        "trades": ("trades.csv", csv_exporter.export_trades_csv),
+        "daily-equity": ("daily_equity.csv", csv_exporter.export_daily_equity_csv),
+        "cash-events": ("cash_events.csv", csv_exporter.export_cash_events_csv),
+    }
+    if kind in csv_kinds:
+        filename, fn = csv_kinds[kind]
+        content = fn(session, run)
+        return Response(
+            content=content,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    if kind == "strategy":
+        content = csv_exporter.export_strategy_snapshot_json(run)
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": 'attachment; filename="strategy_snapshot.json"'
+            },
+        )
+    if kind == "zip":
+        content_bytes = csv_exporter.export_zip(session, run)
+        filename = f"backtest_run_{run.id}.zip"
+        return Response(
+            content=content_bytes,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    raise HTTPException(
+        status_code=400, detail={"code": "EXPORT_KIND_INVALID", "kind": kind}
+    )
+
+
 @router.post("/{run_id}/cancel", response_model=BacktestRunOut, summary="실행 취소")
 def cancel(run_id: int, session: Session = Depends(get_db_session)):
     run = session.get(BacktestRun, run_id)

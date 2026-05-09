@@ -82,6 +82,31 @@ export default function BacktestResultPage() {
         </section>
       )}
 
+      {isCompleted && (
+        <section aria-label="다운로드" style={{ marginTop: 24 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 600 }}>다운로드</h2>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {[
+              { kind: "summary", label: "요약 (CSV)" },
+              { kind: "trades", label: "거래 내역 (CSV)" },
+              { kind: "daily-equity", label: "일별 자산 (CSV)" },
+              { kind: "cash-events", label: "예수금 이벤트 (CSV)" },
+              { kind: "strategy", label: "전략 스냅샷 (JSON)" },
+              { kind: "zip", label: "전체 ZIP" },
+            ].map(({ kind, label }) => (
+              <a
+                key={kind}
+                href={`/api/backtests/${id}/export/${kind}`}
+                download
+                style={dlBtn}
+              >
+                ⬇ {label}
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
       {chartData && chartData.candles.length > 0 && (
         <section aria-label="봉차트" style={{ marginTop: 24 }}>
           <h2 style={{ fontSize: 15, fontWeight: 600 }}>봉차트 + 매수/매도 마커</h2>
@@ -162,6 +187,15 @@ export default function BacktestResultPage() {
 const th: React.CSSProperties = { textAlign: "left", padding: "6px 8px", fontWeight: 600 };
 const td: React.CSSProperties = { padding: "6px 8px" };
 const tdNum: React.CSSProperties = { padding: "6px 8px", textAlign: "right" };
+const dlBtn: React.CSSProperties = {
+  padding: "6px 12px",
+  border: "1px solid #d1d5db",
+  borderRadius: 4,
+  textDecoration: "none",
+  color: "#1f2937",
+  fontSize: 12,
+  background: "white",
+};
 
 function Card({ label, value }: { label: string; value: string }) {
   return (

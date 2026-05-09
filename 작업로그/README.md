@@ -47,9 +47,9 @@
 | 4 | 백테스트 실행/결과 화면 | ✅ 완료 (2/2) |
 | 5 | 종목 봉차트 + 매수/매도 마커 | ✅ 완료 |
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ✅ 완료 |
-| 7 | CSV/ZIP Export | ⬜ 미시작 |
+| 7 | CSV/ZIP Export | ✅ 완료 |
 
-**현재 작업 중**: 없음 (Phase 3 / Step 2 — 프론트엔드 골격 — 다음에 시작).
+**현재 작업 중**: 없음. **MVP 7개 Phase 모두 완료** ✅
 
 **환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. **272/272 통과** + ruff All checks passed. Node v24 + npm 11 사용 가능.
 
@@ -71,6 +71,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [009-csv-export](./2026-05-10-009-csv-export.md) | 7 | main | ✅ | **Phase 7 완료 + MVP 완성** ✅: CSV/ZIP Export + 다운로드 버튼 + 8건 |
 | 2026-05-10 | [008-cash-manager](./2026-05-10-008-cash-manager.md) | 6 | main | ✅ | **Phase 6 완료**: CashManager + cash_events 영속화 + 7건 |
 | 2026-05-10 | [007-chart-data](./2026-05-10-007-chart-data.md) | 5 | main | ✅ | **Phase 5 완료**: chart-data API + CandleTradeChart + EquityCurveChart |
 | 2026-05-10 | [006-backtest-run-page](./2026-05-10-006-backtest-run-page.md) | 4 | main | ✅ | **Phase 4 완료**: BacktestRunPage + ResultPage + 폴링 + 4건 |
