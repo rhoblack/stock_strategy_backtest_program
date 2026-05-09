@@ -49,11 +49,34 @@
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ✅ 완료 |
 | 7 | CSV/ZIP Export | ✅ 완료 |
 
-**현재 작업 중**: 없음. **MVP 7개 Phase 모두 완료** ✅
+**현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️
 
-**환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. **272/272 통과** + ruff All checks passed. Node v24 + npm 11 사용 가능.
+> 위 Phase 1~7 표는 **자체 정의한 step 기준** 완료 표시입니다. **상세설계서 14개 문서 기준으로는 데모 수준**이며 핵심 미구현 다수가 있습니다.
+> 상세 비교는 [`리뷰/2026-05-10-010-외부코드리뷰.md`](../리뷰/2026-05-10-010-외부코드리뷰.md) 참조 (외부 리뷰 + 메인 세션 검증 완료).
+>
+> 주요 미구현/버그:
+> - 백테스트가 실데이터 아닌 합성 데이터(synthetic_data)로만 동작 — 시장데이터 계층(`backend/app/market_data/`) 비어 있음
+> - BacktestEngine은 단일 종목 한정 (복수 종목/priority/유니버스 미구현)
+> - DB에 symbols/daily_prices/trading_calendar 등 시장데이터 테이블 없음
+> - fee/tax가 항상 0.0으로 영속화 (`ExecutionResult` 미도입)
+> - next_open 체결인데 체결일을 신호일(today)로 기록 (holding_days/CSV 1일 시프트)
+> - 전략 JSON validator 부재 — API 직접 호출 시 schema 검증 누락
+> - API user_id scope 누락 (`routes_strategies.py` get/update/delete)
+> - 등록 조건 5/17개
 
-**MVP end-to-end 백엔드 완성**: 전략 생성 → 백테스트 실행 → 영속화 → 요약 조회까지 동작. Alembic 마이그레이션으로 운영 환경 준비.
+**환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. **300/300 통과** + ruff All checks passed. Node v24 + npm 11 사용 가능.
+
+**다음 작업 권고 순서** (위 미구현 항목 해소):
+1. 체결일 정합성 버그 수정 — `engine.py` execution_date 분리
+2. fee/tax 영속화 — `ExecutionResult` dataclass 도입
+3. 전략 JSON validator 도입
+4. 시장데이터 모델 + LocalCsvProvider 스켈레톤
+5. BacktestEngine 복수 종목/priority 리팩터링 (4번 후)
+6. API user_id scope 강제
+
+UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아엎어야 함).
+
+**MVP end-to-end 백엔드 동작**: 전략 생성 → (합성 데이터) 백테스트 실행 → 영속화 → 요약 조회까지 데모 동작. Alembic 마이그레이션으로 운영 환경 준비.
 
 **에이전트 시스템 메모**: `.claude/agents/` 정의가 현재 세션에 hot reload되지 않음. 새 세션 시작 시 정상 인식 여부 확인 필요. 안 되면 메인 세션이 에이전트의 system prompt를 따라 직접 작업 가능.
 
