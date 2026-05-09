@@ -43,7 +43,7 @@
 | 0 | CLAUDE.md + 코딩 에이전트 + 작업 로그 시스템 | ✅ 완료 |
 | 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | ✅ 완료 (9/9) |
 | 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | ✅ 완료 (6/6) |
-| 3 | GUI 전략 빌더 | 🔄 진행 중 (2/7) |
+| 3 | GUI 전략 빌더 | 🔄 진행 중 (3/7) |
 | 4 | 백테스트 실행/결과 화면 | ⬜ 미시작 |
 | 5 | 종목 봉차트 + 매수/매도 마커 | ⬜ 미시작 |
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
@@ -71,6 +71,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-09 | [018-strategy-builder-page-skeleton](./2026-05-09-018-strategy-builder-page-skeleton.md) | 3 | main | ✅ | StrategyBuilderPage 3열 레이아웃 + Router + BlockPalette(실제 데이터) + 6건 |
 | 2026-05-09 | [017-frontend-skeleton](./2026-05-09-017-frontend-skeleton.md) | 3 | main | ✅ | 프론트엔드 골격 (Vite + React + TS + TanStack Query) + 빌드/테스트 통과 |
 | 2026-05-09 | [016-fastapi-conditions-api](./2026-05-09-016-fastapi-conditions-api.md) | 3 | main | ✅ | FastAPI 도입 + GET /api/conditions (메타데이터 자동 노출) + 6건 |
 | 2026-05-09 | [015-alembic](./2026-05-09-015-alembic.md) | 2 | main | ✅ | **Phase 2 완료**: Alembic 도입 + baseline 마이그레이션 + 회귀 검증 3건 |
@@ -122,7 +123,8 @@
 
 1. ✅ FastAPI + GET /api/conditions — 2026-05-09-016
 2. ✅ 프론트엔드 골격 (Vite + React + TS) — 2026-05-09-017
-3. ⏭ **다음**: StrategyBuilderPage 골격 (3열 레이아웃) + Router
+3. ✅ StrategyBuilderPage 골격 + Router — 2026-05-09-018
+4. ⏭ **다음**: Canvas 5개 섹션 카드 빌더 + BlockPalette 클릭 → Canvas 추가 인터랙션
 4. BlockPalette (메타데이터 기반 자동 생성)
 5. ConditionEditorPanel (parameters 메타로 폼 자동)
 6. StrategyPreviewPanel + StrategyValidationPanel
