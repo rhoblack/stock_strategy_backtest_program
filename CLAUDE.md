@@ -130,6 +130,8 @@ Phase 7. CSV/ZIP Export
 2. `작업로그/README.md` "최근 작업" 표에 1행 추가
 3. Phase 상태가 변경됐으면 Phase 표 갱신
 4. Follow-ups 중 다음 작업 후보로 승격할 항목을 README의 "Phase N 다음 작업 후보"에 옮김
+5. **각 step 완료 시**: `git commit` (각 step의 결과물을 단일 커밋)
+6. **Phase 완료 시 (의무)**: `git push origin main` — Phase의 마지막 step commit 직후 실행. push 누락 시 다음 세션이 GitHub에서 동기화 못 하므로 **반드시 자동 실행**.
 
 ### 블록 / 중단 시
 

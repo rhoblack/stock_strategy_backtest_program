@@ -74,3 +74,5 @@ pytest backend/tests/strategy/test_rsi.py
 - [ ] 작업로그/README.md "최근 작업" 표에 1행 추가
 - [ ] Phase 상태가 변경되었으면 Phase 표 갱신
 - [ ] Follow-ups 중 다음 작업 후보로 옮길 항목 정리
+- [ ] `git commit` (단일 커밋)
+- [ ] **Phase 마지막 step이라면**: `git push origin main` 자동 실행 (의무)
