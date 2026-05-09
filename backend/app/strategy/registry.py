@@ -82,7 +82,7 @@ class ConditionRegistry:
 
         return decorator
 
-    def evaluate(self, condition_type: str, df: "pd.DataFrame", condition: dict) -> "pd.Series":
+    def evaluate(self, condition_type: str, df: pd.DataFrame, condition: dict) -> pd.Series:
         """시계열 조건 평가. StrategyEngine이 호출.
 
         반환값은 boolean pandas Series여야 한다 (각 함수 책임).

@@ -5,5 +5,12 @@ import 시점에 `condition_registry`에 자동 등록된다.
 """
 
 from app.strategy.registry import ConditionEntry, ConditionRegistry, condition_registry
+from app.strategy.utils import ALLOWED_OPERATORS, compare
 
-__all__ = ["ConditionEntry", "ConditionRegistry", "condition_registry"]
+__all__ = [
+    "ALLOWED_OPERATORS",
+    "ConditionEntry",
+    "ConditionRegistry",
+    "compare",
+    "condition_registry",
+]

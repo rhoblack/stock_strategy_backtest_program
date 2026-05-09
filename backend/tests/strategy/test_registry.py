@@ -226,9 +226,12 @@ def test_re_registering_overwrites_previous():
 
 
 def test_condition_entry_is_frozen():
-    """ConditionEntry는 frozen dataclass — 변경 불가."""
+    """ConditionEntry는 frozen dataclass — 변경 불가.
+
+    `dataclasses.FrozenInstanceError`는 `AttributeError`의 서브클래스이므로 후자로 잡는다.
+    """
     entry = ConditionEntry(func=lambda: None, requires_position=False, category="x")
-    with pytest.raises(Exception):  # FrozenInstanceError or AttributeError
+    with pytest.raises(AttributeError):
         entry.category = "y"  # type: ignore[misc]
 
 
