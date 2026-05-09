@@ -44,7 +44,7 @@
 | 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | ✅ 완료 (9/9) |
 | 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | ✅ 완료 (6/6) |
 | 3 | GUI 전략 빌더 | ✅ 완료 (7/7) |
-| 4 | 백테스트 실행/결과 화면 | 🔄 진행 중 (1/3) |
+| 4 | 백테스트 실행/결과 화면 | ✅ 완료 (2/2) |
 | 5 | 종목 봉차트 + 매수/매도 마커 | ⬜ 미시작 |
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
 | 7 | CSV/ZIP Export | ⬜ 미시작 |
@@ -71,6 +71,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [006-backtest-run-page](./2026-05-10-006-backtest-run-page.md) | 4 | main | ✅ | **Phase 4 완료**: BacktestRunPage + ResultPage + 폴링 + 4건 |
 | 2026-05-10 | [005-backtest-api](./2026-05-10-005-backtest-api.md) | 4 | main | ✅ | Backtest API + 합성 데이터 dev 모드 + 6건 |
 | 2026-05-10 | [004-strategy-save](./2026-05-10-004-strategy-save.md) | 3 | main | ✅ | **Phase 3 완료**: Strategy CRUD API + serialize + Save+redirect + 9건 |
 | 2026-05-10 | [003-preview-validation](./2026-05-10-003-preview-validation.md) | 3 | main | ✅ | StrategyPreviewPanel + StrategyValidationPanel + 10건 |
@@ -134,14 +135,18 @@
 6. ✅ StrategyPreviewPanel + StrategyValidationPanel — 2026-05-10-003
 7. ✅ 전략 저장 (Strategy CRUD + Save+redirect) — 2026-05-10-004
 
-## Phase 4 다음 작업 후보 (백테스트 실행/결과 화면)
+## Phase 4 완료 ✅
 
-설계서 19절 Phase 4 + 04번/08번/10번:
+1. ✅ Backtest API + 합성 데이터 dev 모드 — 2026-05-10-005
+2. ✅ BacktestRunPage + ResultPage + StrategyListPage 실데이터 — 2026-05-10-006
 
-1. ⏭ **다음**: BacktestRun API (POST/GET status/cancel/summary)
-2. BacktestRunPage (전략 선택 + 기간/자금/수수료 설정 + 실행 + 진행률 폴링)
-3. BacktestResultPage (요약 카드 + 거래내역 표 + daily_equity 차트)
-4. CSV 다운로드 (간단한 trades.csv부터)
+## Phase 5 다음 작업 후보 (종목 봉차트 + 매수/매도 마커)
+
+설계서 08번:
+
+1. ⏭ **다음**: TradingView Lightweight Charts 도입 + CandleTradeChart
+2. EquityCurveChart (Recharts/ECharts)
+3. BacktestResultPage에 차트 통합
 4. BlockPalette (메타데이터 기반 자동 생성)
 5. ConditionEditorPanel (parameters 메타로 폼 자동)
 6. StrategyPreviewPanel + StrategyValidationPanel
