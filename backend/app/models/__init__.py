@@ -1,0 +1,10 @@
+"""SQLAlchemy 모델 패키지.
+
+이 모듈을 import하면 모든 모델이 Base.metadata에 등록된다.
+새 모델 추가 시 아래 import 목록에 추가할 것 (init_db / 마이그레이션 인식용).
+"""
+
+from app.models.strategy import Strategy, StrategyVersion
+from app.models.user import User
+
+__all__ = ["Strategy", "StrategyVersion", "User"]

@@ -40,18 +40,18 @@
 | 0 | 설계 문서 작성 + 리뷰 반영 | ✅ 완료 |
 | 0 | CLAUDE.md + 코딩 에이전트 + 작업 로그 시스템 | ✅ 완료 |
 | 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | ✅ 완료 (9/9) |
-| 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | ⬜ 미시작 (다음) |
+| 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | 🔄 진행 중 (1/5) |
 | 3 | GUI 전략 빌더 | ⬜ 미시작 |
 | 4 | 백테스트 실행/결과 화면 | ⬜ 미시작 |
 | 5 | 종목 봉차트 + 매수/매도 마커 | ⬜ 미시작 |
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
 | 7 | CSV/ZIP Export | ⬜ 미시작 |
 
-**현재 작업 중**: 없음. **Phase 1 완료** ✅ → 다음 세션이 Phase 2 (SQLite 저장)를 시작 가능.
+**현재 작업 중**: 없음 (Phase 2 / Step 2 — backtest_runs + backtest_results 모델 — 다음에 시작).
 
-**환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. **216/216 통과** + ruff All checks passed.
+**환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. **227/227 통과** + ruff All checks passed.
 
-**MVP 단일 종목 백테스트 end-to-end 동작 + Golden test 회귀 보증**: StrategyEngine + ExecutionModel + Portfolio + BacktestEngine + calculate_metrics. 정확성 정책 13.3/13.4/13.6/13.16 적용 + 9개 frozen 지표로 회귀 잡기.
+**Phase 1 백엔드 엔진 완료** + **Phase 2 DB 인프라 + 첫 모델 (User/Strategy/StrategyVersion) 완료**.
 
 **에이전트 시스템 메모**: `.claude/agents/` 정의가 현재 세션에 hot reload되지 않음. 새 세션 시작 시 정상 인식 여부 확인 필요. 안 되면 메인 세션이 에이전트의 system prompt를 따라 직접 작업 가능.
 
@@ -69,6 +69,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-09 | [010-db-and-strategy-models](./2026-05-09-010-db-and-strategy-models.md) | 2 | main | ✅ | SQLAlchemy 인프라 + User/Strategy/StrategyVersion 모델 + DB 테스트 11건 |
 | 2026-05-09 | [009-golden-test](./2026-05-09-009-golden-test.md) | 1 | main | ✅ | **Phase 1 완료**: Golden test fixture 4종 (frozen expected 9지표 + 결정론 10회) |
 | 2026-05-09 | [008-metrics](./2026-05-09-008-metrics.md) | 1 | main | ✅ | calculate_metrics (12개 지표, trade_group 단위 집계) + 13건 테스트 |
 | 2026-05-09 | [007-backtest-engine](./2026-05-09-007-backtest-engine.md) | 1 | main (backtest-engine-developer 대행) | ✅ | 단일 종목 BacktestEngine (정확성 정책 13.3/13.4/13.16 적용) + 13건 테스트 |
@@ -99,12 +100,15 @@
 
 설계서 19절 Phase 2:
 
-1. ⏭ **다음**: SQLAlchemy 모델 — users / strategies / strategy_versions
-2. backtest_runs 테이블 (strategy_snapshot_json + tax_rate_json + priority_method 등)
-3. backtest_results 테이블 (calculate_metrics 결과 저장)
-4. trade_groups + trade_executions (07번 9~10절)
-5. daily_equity 테이블
-6. cash_events 테이블 (Phase 6 CashManager 시 채움)
+1. ✅ SQLAlchemy 모델 — users / strategies / strategy_versions — 2026-05-09-010 완료
+2. ⏭ **다음**: backtest_runs + backtest_results 모델
+   - strategy_snapshot_json + tax_rate_json + priority_method + random_seed 등 정확성 정책 스냅샷
+   - calculate_metrics 결과 저장
+3. trade_groups + trade_executions (07번 9~10절)
+4. daily_equity 모델
+5. services 레이어 (strategy_service, backtest_service)
+6. (별도) Alembic 도입 — 첫 마이그레이션
+7. cash_events (Phase 6 CashManager 시 채움)
 
 각 단계는 별도 작업 로그 파일을 만들어 진행합니다.
 
