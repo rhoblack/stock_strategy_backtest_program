@@ -7,6 +7,7 @@
 from app.models.backtest import BacktestResult, BacktestRun
 from app.models.enums import BacktestStatus, TradeExecutionType
 from app.models.strategy import Strategy, StrategyVersion
+from app.models.trade import TradeExecution, TradeGroup
 from app.models.user import User
 
 __all__ = [
@@ -15,6 +16,8 @@ __all__ = [
     "BacktestStatus",
     "Strategy",
     "StrategyVersion",
+    "TradeExecution",
     "TradeExecutionType",
+    "TradeGroup",
     "User",
 ]

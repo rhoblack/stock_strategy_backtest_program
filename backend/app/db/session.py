@@ -5,14 +5,18 @@ MVP는 SQLite. PostgreSQL로 전환 시 url만 교체.
 
 from __future__ import annotations
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
 
 
 def create_db_engine(url: str, *, echo: bool = False) -> Engine:
-    """DB 엔진 생성. SQLite는 같은 connection을 thread 간 공유 가능하도록 옵션 추가.
+    """DB 엔진 생성.
+
+    SQLite의 경우:
+        - check_same_thread=False (멀티 스레드 호환)
+        - PRAGMA foreign_keys=ON 자동 (ON DELETE CASCADE 동작 보장)
 
     예시:
         create_db_engine("sqlite:///dev.db")
@@ -20,12 +24,21 @@ def create_db_engine(url: str, *, echo: bool = False) -> Engine:
         create_db_engine("postgresql://user:pwd@localhost/dbname")
     """
     if url.startswith("sqlite"):
-        return create_engine(
+        engine = create_engine(
             url,
             echo=echo,
             connect_args={"check_same_thread": False},
             future=True,
         )
+
+        @event.listens_for(engine, "connect")
+        def _enable_sqlite_foreign_keys(dbapi_conn, _):  # noqa: ANN001
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+        return engine
+
     return create_engine(url, echo=echo, future=True)
 
 

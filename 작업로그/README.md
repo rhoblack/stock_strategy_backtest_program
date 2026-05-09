@@ -40,7 +40,7 @@
 | 0 | 설계 문서 작성 + 리뷰 반영 | ✅ 완료 |
 | 0 | CLAUDE.md + 코딩 에이전트 + 작업 로그 시스템 | ✅ 완료 |
 | 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | ✅ 완료 (9/9) |
-| 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | 🔄 진행 중 (2/6) |
+| 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | 🔄 진행 중 (3/6) |
 | 3 | GUI 전략 빌더 | ⬜ 미시작 |
 | 4 | 백테스트 실행/결과 화면 | ⬜ 미시작 |
 | 5 | 종목 봉차트 + 매수/매도 마커 | ⬜ 미시작 |
@@ -69,6 +69,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-09 | [012-trade-models](./2026-05-09-012-trade-models.md) | 2 | main | ✅ | TradeGroup + TradeExecution 모델 + SQLite PRAGMA foreign_keys 자동화 + 7건 |
 | 2026-05-09 | [011-backtest-run-result-models](./2026-05-09-011-backtest-run-result-models.md) | 2 | main | ✅ | BacktestRun + BacktestResult 모델 (정확성 정책 스냅샷 모두 영속화) + 9건 |
 | 2026-05-09 | [010-db-and-strategy-models](./2026-05-09-010-db-and-strategy-models.md) | 2 | main | ✅ | SQLAlchemy 인프라 + User/Strategy/StrategyVersion 모델 + DB 테스트 11건 |
 | 2026-05-09 | [009-golden-test](./2026-05-09-009-golden-test.md) | 1 | main | ✅ | **Phase 1 완료**: Golden test fixture 4종 (frozen expected 9지표 + 결정론 10회) |
@@ -103,8 +104,8 @@
 
 1. ✅ SQLAlchemy 모델 — users / strategies / strategy_versions — 2026-05-09-010
 2. ✅ backtest_runs + backtest_results — 2026-05-09-011
-3. ⏭ **다음**: trade_groups + trade_executions (07번 9~10절)
-4. daily_equity 모델
+3. ✅ trade_groups + trade_executions — 2026-05-09-012
+4. ⏭ **다음**: daily_equity 모델
 5. services 레이어 (strategy_service, backtest_service)
 6. (별도) Alembic 도입 — 첫 마이그레이션
 7. cash_events (Phase 6 CashManager 시 채움)
