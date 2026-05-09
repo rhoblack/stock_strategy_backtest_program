@@ -96,6 +96,21 @@ def test_daily_equity_list(client):
     assert body["total_count"] == 90
 
 
+def test_chart_data(client):
+    s = client.post("/api/strategies", json=_strategy_payload()).json()
+    run = client.post("/api/backtests", json=_backtest_payload(s["id"])).json()
+
+    body = client.get(f"/api/backtests/{run['id']}/chart-data").json()
+    assert len(body["candles"]) == 90
+    assert all({"time", "open", "high", "low", "close"} <= set(c.keys()) for c in body["candles"][:3])
+    assert len(body["markers"]) == 17  # 9 BUY + 8 SELL
+    assert len(body["equity_curve"]) == 90
+
+
+def test_chart_data_404(client):
+    assert client.get("/api/backtests/9999/chart-data").status_code == 404
+
+
 def test_status_404_for_unknown(client):
     r = client.get("/api/backtests/9999/status")
     assert r.status_code == 404

@@ -17,6 +17,20 @@ vi.mock("../api/backtests", () => ({
   useDailyEquity: vi.fn(),
 }));
 
+vi.mock("../api/chartData", () => ({
+  useChartData: vi.fn(() => ({
+    data: { candles: [{ time: "2024-01-02", open: 1, high: 1, low: 1, close: 1 }], markers: [], equity_curve: [{ time: "2024-01-02", value: 100, drawdown: 0 }] },
+  })),
+}));
+
+// jsdom에서 lightweight-charts canvas 측정 안 됨 → 컴포넌트 mock
+vi.mock("../features/backtest-result/components/CandleTradeChart", () => ({
+  default: () => <div data-testid="candle-trade-chart" />,
+}));
+vi.mock("../features/backtest-result/components/EquityCurveChart", () => ({
+  default: () => <div data-testid="equity-curve-chart" />,
+}));
+
 const useStatusMock = vi.mocked(useBacktestStatus);
 const useSummaryMock = vi.mocked(useBacktestSummary);
 const useTradesMock = vi.mocked(useBacktestTrades);

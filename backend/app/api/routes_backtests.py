@@ -135,6 +135,70 @@ def list_trades(run_id: int, session: Session = Depends(get_db_session)):
     return {"items": items, "total_count": len(items)}
 
 
+@router.get("/{run_id}/chart-data", summary="차트 데이터 (candles + markers + equity)")
+def get_chart_data(run_id: int, session: Session = Depends(get_db_session)):
+    """단일 종목 백테스트 결과 차트 데이터 (08번 16절).
+
+    dev 모드: synthetic_seed/synthetic_n으로 candles 재생성.
+    Phase 14 PriceLoader 도입 시 daily_prices에서 직접 조회로 교체.
+    """
+    run = session.get(BacktestRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail={"code": "BACKTEST_RUN_NOT_FOUND"})
+
+    cfg = run.universe_config_json or {}
+    seed = int(cfg.get("synthetic_seed", 42))
+    n = int(cfg.get("synthetic_n", 90))
+
+    from app.services.synthetic_data import build_synthetic_series
+
+    df = build_synthetic_series(seed=seed, n=n, base_date=run.start_date)
+    candles = [
+        {
+            "time": row["date"].isoformat(),
+            "open": float(row["adj_open"]),
+            "high": float(row["adj_high"]),
+            "low": float(row["adj_low"]),
+            "close": float(row["adj_close"]),
+        }
+        for _, row in df.iterrows()
+    ]
+
+    executions = (
+        session.query(TradeExecution)
+        .filter_by(run_id=run_id)
+        .order_by(TradeExecution.execution_date)
+        .all()
+    )
+    markers = [
+        {
+            "time": ex.execution_date.isoformat(),
+            "type": ex.execution_type.value,
+            "price": ex.price,
+            "quantity": ex.quantity,
+            "exit_reason": ex.exit_reason,
+        }
+        for ex in executions
+    ]
+
+    equity_rows = (
+        session.query(DailyEquity)
+        .filter_by(run_id=run_id)
+        .order_by(DailyEquity.date)
+        .all()
+    )
+    equity_curve = [
+        {"time": eq.date.isoformat(), "value": eq.total_equity, "drawdown": eq.drawdown}
+        for eq in equity_rows
+    ]
+
+    return {
+        "candles": candles,
+        "markers": markers,
+        "equity_curve": equity_curve,
+    }
+
+
 @router.get("/{run_id}/daily-equity", summary="일별 자산")
 def list_daily_equity(run_id: int, session: Session = Depends(get_db_session)):
     rows = (

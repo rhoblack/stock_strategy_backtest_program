@@ -5,6 +5,9 @@ import {
   useBacktestTrades,
   useDailyEquity,
 } from "../api/backtests";
+import { useChartData } from "../api/chartData";
+import CandleTradeChart from "../features/backtest-result/components/CandleTradeChart";
+import EquityCurveChart from "../features/backtest-result/components/EquityCurveChart";
 
 /**
  * 백테스트 결과 페이지 — status 폴링 + 요약 + 거래 내역 표.
@@ -19,6 +22,7 @@ export default function BacktestResultPage() {
   const { data: summaryWrap } = useBacktestSummary(id, isCompleted);
   const { data: tradesWrap } = useBacktestTrades(id, isCompleted);
   const { data: equityWrap } = useDailyEquity(id, isCompleted);
+  const { data: chartData } = useChartData(id, isCompleted);
 
   const summary = summaryWrap?.summary;
 
@@ -75,6 +79,20 @@ export default function BacktestResultPage() {
                 : summary.profit_factor.toFixed(2)
             }
           />
+        </section>
+      )}
+
+      {chartData && chartData.candles.length > 0 && (
+        <section aria-label="봉차트" style={{ marginTop: 24 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 600 }}>봉차트 + 매수/매도 마커</h2>
+          <CandleTradeChart candles={chartData.candles} markers={chartData.markers} />
+        </section>
+      )}
+
+      {chartData && chartData.equity_curve.length > 0 && (
+        <section aria-label="자산 곡선" style={{ marginTop: 24 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 600 }}>자산 곡선</h2>
+          <EquityCurveChart equity={chartData.equity_curve} />
         </section>
       )}
 

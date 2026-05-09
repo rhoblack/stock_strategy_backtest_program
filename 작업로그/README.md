@@ -45,7 +45,7 @@
 | 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | ✅ 완료 (6/6) |
 | 3 | GUI 전략 빌더 | ✅ 완료 (7/7) |
 | 4 | 백테스트 실행/결과 화면 | ✅ 완료 (2/2) |
-| 5 | 종목 봉차트 + 매수/매도 마커 | ⬜ 미시작 |
+| 5 | 종목 봉차트 + 매수/매도 마커 | ✅ 완료 |
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
 | 7 | CSV/ZIP Export | ⬜ 미시작 |
 
@@ -71,6 +71,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [007-chart-data](./2026-05-10-007-chart-data.md) | 5 | main | ✅ | **Phase 5 완료**: chart-data API + CandleTradeChart + EquityCurveChart |
 | 2026-05-10 | [006-backtest-run-page](./2026-05-10-006-backtest-run-page.md) | 4 | main | ✅ | **Phase 4 완료**: BacktestRunPage + ResultPage + 폴링 + 4건 |
 | 2026-05-10 | [005-backtest-api](./2026-05-10-005-backtest-api.md) | 4 | main | ✅ | Backtest API + 합성 데이터 dev 모드 + 6건 |
 | 2026-05-10 | [004-strategy-save](./2026-05-10-004-strategy-save.md) | 3 | main | ✅ | **Phase 3 완료**: Strategy CRUD API + serialize + Save+redirect + 9건 |
@@ -140,13 +141,28 @@
 1. ✅ Backtest API + 합성 데이터 dev 모드 — 2026-05-10-005
 2. ✅ BacktestRunPage + ResultPage + StrategyListPage 실데이터 — 2026-05-10-006
 
-## Phase 5 다음 작업 후보 (종목 봉차트 + 매수/매도 마커)
+## Phase 5 완료 ✅
 
-설계서 08번:
+- chart-data API (candles + markers + equity_curve)
+- CandleTradeChart (lightweight-charts) + EquityCurveChart
+- BacktestResultPage에 차트 통합
 
-1. ⏭ **다음**: TradingView Lightweight Charts 도입 + CandleTradeChart
-2. EquityCurveChart (Recharts/ECharts)
-3. BacktestResultPage에 차트 통합
+## Phase 6 다음 작업 후보 (Portfolio + CashManager)
+
+설계서 05번 9~12절:
+
+1. ⏭ **다음**: PositionSizer + CashManager 모듈 (이미 구조는 있음)
+2. BacktestEngine에 cash_management 옵션 통합
+3. CashEvent DB 모델 + 영속화
+
+## Phase 7 다음 작업 후보 (CSV/ZIP Export)
+
+설계서 09번:
+
+1. CsvExporter (summary/trades/daily_equity/cash_events)
+2. ZipExporter
+3. /api/backtests/{id}/export/* 엔드포인트
+4. 결과 페이지에 다운로드 버튼
 4. BlockPalette (메타데이터 기반 자동 생성)
 5. ConditionEditorPanel (parameters 메타로 폼 자동)
 6. StrategyPreviewPanel + StrategyValidationPanel
