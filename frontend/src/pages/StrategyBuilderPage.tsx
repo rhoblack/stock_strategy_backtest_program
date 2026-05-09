@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import BlockPalette from "../features/strategy-builder/components/BlockPalette";
 import StrategyCanvas from "../features/strategy-builder/components/StrategyCanvas";
 import ConditionEditorPanel from "../features/strategy-builder/components/ConditionEditorPanel";
+import StrategyPreviewPanel from "../features/strategy-builder/components/StrategyPreviewPanel";
+import StrategyValidationPanel from "../features/strategy-builder/components/StrategyValidationPanel";
 import { StrategyDraftProvider } from "../features/strategy-builder/state/StrategyDraftContext";
 
 /**
@@ -62,7 +64,18 @@ export default function StrategyBuilderPage() {
         >
           <BlockPalette />
           <StrategyCanvas />
-          <ConditionEditorPanel />
+          <div
+            style={{
+              borderLeft: "1px solid #e5e7eb",
+              display: "grid",
+              gridTemplateRows: "1fr auto auto",
+              minHeight: 0,
+            }}
+          >
+            <ConditionEditorPanel />
+            <StrategyPreviewPanel />
+            <StrategyValidationPanel />
+          </div>
         </div>
       </div>
     </StrategyDraftProvider>

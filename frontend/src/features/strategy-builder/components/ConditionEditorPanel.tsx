@@ -24,7 +24,7 @@ export default function ConditionEditorPanel() {
   return (
     <aside
       aria-label="조건 편집 패널"
-      style={{ borderLeft: "1px solid #e5e7eb", padding: 12, overflowY: "auto" }}
+      style={{ padding: 12, overflowY: "auto" }}
     >
       <h2 style={{ fontSize: 14, fontWeight: 600 }}>조건 편집</h2>
 
