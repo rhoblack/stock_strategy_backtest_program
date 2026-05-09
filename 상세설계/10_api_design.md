@@ -128,9 +128,21 @@ GUI에서 사용할 조건 블록 목록을 반환합니다.
 
 ## 4. 백테스트 API
 
-### POST /api/backtests
+### 4.1 비동기 처리 정책 (MVP 포함)
 
-백테스트 실행 요청
+코스피 전체 5년 백테스트는 분~시간 단위가 걸립니다. 모든 백테스트 API는 비동기로 동작합니다.
+
+```text
+POST /api/backtests              → run_id 즉시 반환, 백그라운드에서 실행
+GET  /api/backtests/{id}/status  → 진행률 조회 (폴링)
+POST /api/backtests/{id}/cancel  → 취소 요청
+```
+
+MVP에서는 백그라운드 작업을 단순 thread/process로 처리하고, 향후 Celery / RQ / arq 등 작업 큐로 전환합니다.
+
+### 4.2 POST /api/backtests
+
+백테스트 실행 요청 (즉시 반환).
 
 요청:
 
@@ -140,27 +152,81 @@ GUI에서 사용할 조건 블록 목록을 반환합니다.
   "run_name": "코스닥 2020-2025 테스트",
   "universe_config": {
     "market": "KOSDAQ",
-    "selection_method": "all"
+    "selection_method": "all",
+    "exclude_etf": true,
+    "exclude_spac": true,
+    "min_listing_age_days": 60
   },
   "start_date": "2020-01-01",
   "end_date": "2025-12-31",
   "initial_cash": 10000000,
   "fee_rate": 0.00015,
-  "tax_rate": 0.0018,
-  "slippage": 0.001
+  "tax_rate": [
+    { "from": "2020-01-01", "rate": 0.0023 },
+    { "from": "2023-01-01", "rate": 0.0020 },
+    { "from": "2024-01-01", "rate": 0.0018 },
+    { "from": "2025-01-01", "rate": 0.0015 }
+  ],
+  "slippage": 0.001,
+  "use_adjusted_price": true,
+  "tick_rounding": "buy_up_sell_down",
+  "max_gap_pct_for_entry": 5.0
 }
 ```
+
+응답 (즉시):
+
+```json
+{
+  "run_id": 100,
+  "status": "pending",
+  "queued_at": "2026-05-09T10:00:00Z"
+}
+```
+
+`tax_rate`는 단일 float 또는 시계열 배열 모두 허용 (정확성 정책 13.6).
+
+### 4.3 GET /api/backtests/{run_id}/status
+
+진행률 조회. 프론트엔드는 1~3초 간격으로 폴링합니다.
 
 응답:
 
 ```json
 {
   "run_id": 100,
-  "status": "pending"
+  "status": "running",
+  "progress_pct": 42.5,
+  "current_date": "2022-08-14",
+  "started_at": "2026-05-09T10:00:05Z",
+  "elapsed_seconds": 87,
+  "eta_seconds": 120
 }
 ```
 
-MVP에서는 동기 실행도 가능하지만, 장기적으로는 비동기 작업 큐가 좋습니다.
+`status`:
+```text
+pending     큐에 대기 중
+running     실행 중
+completed   완료
+failed      실패 (error_message 포함)
+cancelled   사용자 취소
+```
+
+### 4.4 POST /api/backtests/{run_id}/cancel
+
+실행 중인 백테스트 취소.
+
+응답:
+
+```json
+{
+  "run_id": 100,
+  "status": "cancelling"
+}
+```
+
+다음 날짜 루프 시작 전에 취소 신호를 확인하고 정리 후 status를 `cancelled`로 갱신합니다. 부분 결과는 폐기.
 
 ---
 
@@ -198,7 +264,7 @@ MVP에서는 동기 실행도 가능하지만, 장기적으로는 비동기 작�
 
 ### GET /api/backtests/{run_id}/trades
 
-거래 내역 조회
+거래 내역 조회. trade_groups 단위로 집계된 매수-매도 페어를 반환합니다 (07 DB 9~10절).
 
 쿼리 옵션:
 
@@ -209,8 +275,36 @@ end_date
 exit_reason
 profit_only
 loss_only
-page
-page_size
+include_executions   (true 시 부분 매도 이력 포함)
+page                 (기본 1)
+page_size            (기본 100, 최대 500)
+sort                 (entry_date_desc | profit_rate_desc | profit_desc 등)
+```
+
+응답:
+
+```json
+{
+  "items": [
+    {
+      "trade_group_id": 5001,
+      "symbol": "005930",
+      "name": "삼성전자",
+      "entry_date": "2024-03-12",
+      "entry_price": 72000,
+      "entry_quantity": 13,
+      "fully_closed_at": "2024-04-05",
+      "final_profit": 80600,
+      "final_profit_rate": 8.61,
+      "executions": [
+        { "execution_date": "2024-04-05", "execution_type": "SELL", "quantity": 13, "exit_reason": "take_profit" }
+      ]
+    }
+  ],
+  "page": 1,
+  "page_size": 100,
+  "total_count": 312
+}
 ```
 
 ---
@@ -229,27 +323,35 @@ page_size
 
 ### GET /api/backtests/{run_id}/chart-data
 
-차트 데이터 조회
+차트 데이터 조회. 5년치 봉 + 마커 + 자산곡선 등은 데이터양이 크므로 다운샘플링과 페이지네이션을 지원합니다.
 
 쿼리 옵션:
 
 ```text
-symbol
+symbol               (지정 시 종목별 차트, 미지정 시 포트폴리오 전체)
 start_date
 end_date
+resolution           (1d | 1w | 1mo, 기본 1d)
+fields               (candles,markers,volume,equity_curve,cash_curve 중 콤마 구분, 기본 모두)
+include_adjusted     (true 시 수정주가, false 시 원 가격, 기본 true)
 ```
 
 응답:
 
 ```json
 {
-  "candles": [],
-  "markers": [],
-  "volume": [],
-  "equity_curve": [],
-  "cash_curve": []
+  "candles": [...],
+  "markers": [...],
+  "volume": [...],
+  "equity_curve": [...],
+  "benchmark_curve": [...],
+  "cash_curve": [...],
+  "resolution": "1d",
+  "downsampled": false
 }
 ```
+
+응답 크기가 1MB를 초과하면 자동으로 일주일 단위로 다운샘플링하고 `downsampled: true`로 표시합니다.
 
 ---
 
@@ -359,15 +461,64 @@ GET /api/backtests/{run_id}/export/zip
 }
 ```
 
-주요 에러 코드:
+### 7.1 에러 코드 목록
 
+전략 / 검증 관련:
 ```text
 INVALID_STRATEGY_JSON
 UNKNOWN_CONDITION_TYPE
-MARKET_DATA_NOT_FOUND
+EXIT_POSITION_IN_EXIT_SIGNAL       (포지션 조건이 exit_signal에 들어감)
+EXIT_SIGNAL_IN_EXIT_POSITION       (시계열 조건이 exit_position에 들어감)
+INVALID_OPERATOR
+INVALID_PARAMETER_VALUE
+MISSING_REQUIRED_PARAMETER
+STRATEGY_NOT_FOUND
+DUPLICATE_STRATEGY_NAME
+```
+
+백테스트 관련:
+```text
 BACKTEST_RUN_NOT_FOUND
+BACKTEST_ALREADY_RUNNING
+BACKTEST_NOT_RUNNING               (취소 불가)
+BACKTEST_TIMEOUT
+INVALID_DATE_RANGE
 INSUFFICIENT_PRICE_DATA
+TRADING_CALENDAR_MISSING
+```
+
+데이터 관련:
+```text
+MARKET_DATA_NOT_FOUND
+SYMBOL_NOT_FOUND
+UNIVERSE_EMPTY
+UNIVERSE_PREVIEW_FAILED
+```
+
+권한 / 인증:
+```text
+UNAUTHORIZED
+FORBIDDEN
+RATE_LIMIT_EXCEEDED
+```
+
+Export:
+```text
 EXPORT_FAILED
+EXPORT_TOO_LARGE
+```
+
+### 7.2 HTTP 상태 코드 매핑
+
+```text
+400  검증 실패 (INVALID_*, MISSING_*)
+401  UNAUTHORIZED
+403  FORBIDDEN
+404  *_NOT_FOUND
+409  BACKTEST_ALREADY_RUNNING, DUPLICATE_*
+422  도메인 검증 실패 (EXIT_POSITION_IN_EXIT_SIGNAL 등)
+429  RATE_LIMIT_EXCEEDED
+500  내부 오류
 ```
 
 ---
@@ -379,6 +530,45 @@ EXPORT_FAILED
 조건 목록은 GET /api/conditions에서 받는다.
 백테스트 결과는 run_id 기준으로 조회한다.
 전략 수정 후에도 과거 backtest run은 strategy_snapshot_json으로 유지한다.
-대용량 결과는 페이지네이션을 지원한다.
-CSV Export는 별도 API로 제공한다.
+백테스트 실행은 항상 비동기. 진행률은 status API로 폴링.
+대용량 결과는 페이지네이션 (page/page_size) 또는 cursor 지원.
+차트 데이터는 1MB 초과 시 자동 다운샘플링.
+CSV Export는 별도 API로 제공.
+모든 응답에 X-Request-ID 헤더 포함.
+모든 timestamp는 ISO 8601 UTC.
+```
+
+---
+
+## 9. 인증 / 권한 (MVP 정책)
+
+```text
+MVP: API key 또는 세션 쿠키, 단일 시스템 유저 전제 가능
+v2:  사용자 가입/로그인, 본인 strategy/backtest_run만 조회 가능
+```
+
+모든 list/get 엔드포인트는 user_id 스코프로 자동 필터.
+
+---
+
+## 10. 페이지네이션 표준
+
+```text
+요청:
+  ?page=1&page_size=100  (기본 100, 최대 500)
+
+응답:
+  {
+    "items": [...],
+    "page": 1,
+    "page_size": 100,
+    "total_count": 312,
+    "has_next": true
+  }
+```
+
+대용량 daily_equity / trade_executions에는 cursor 기반도 지원합니다.
+
+```text
+?cursor=eyJk...&limit=200
 ```

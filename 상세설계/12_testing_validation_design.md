@@ -176,18 +176,54 @@ close 체결 가격
 
 ## 9. BacktestEngine 테스트
 
-검증:
+기본 검증:
 
 ```text
 매수 신호 발생 시 매수
 매도 조건 발생 시 매도
-익절 처리
-손절 처리
-최대 보유일 처리
+다음날 시가 체결
+일별 자산 기록
+거래 내역 생성 (trade_group 단위)
+```
+
+정확성 정책 검증 (13 문서):
+
+```text
+[일중 처리]
+일중 high 도달 시 익절 정확
+일중 low 도달 시 손절 정확
+동일 봉 익절·손절 동시 도달 시 손절 우선
+trailing_stop이 전일까지의 peak 사용
+
+[갭 처리]
+갭 다운 손절 시 시가 체결
+갭 업 익절 시 시가 체결
+max_gap_pct_for_entry 초과 시 매수 건너뜀
+
+[거래정지/한가]
+거래정지 종목 매수/매도 차단
+상한가 매수 차단 (allow_buy_limit_up=false)
+하한가 매도 보류 (allow_sell_limit_down=false)
+
+[호가/가격]
+호가 단위 반올림 (가격대별)
+수정주가 사용 일관성 (use_adjusted_price=true)
+
+[거래세 시계열]
+2022-12-31 거래 시 0.23% 적용
+2023-06-15 거래 시 0.20% 적용
+2024-06-15 거래 시 0.18% 적용
+2025-06-15 거래 시 0.15% 적용
+
+[priority 결정론]
+같은 입력 → 같은 결과 (10회 반복)
+random_seed 동일 시 동일 결과
+종목코드 tie-breaker 정확
+
+[자금 관리]
 예수금 부족 시 매수 제한
 예수금 부족 시 CashManager 실행
-일별 자산 기록
-거래 내역 생성
+부분 매도 후에도 trade_group 유지
 ```
 
 ---
@@ -291,15 +327,87 @@ CSV 다운로드 버튼 표시
 
 ---
 
-## 15. 회귀 테스트
+## 15. 회귀 테스트 (Golden Test)
 
-새 조건이나 기능 추가 시 반드시 확인합니다.
+### 15.1 목적
+
+백테스트 결과의 회귀를 막기 위해 **고정된 입력 → 고정된 출력**의 reference run을 만들어 매 빌드마다 검증합니다.
+
+### 15.2 Golden test fixture 구조
+
+```text
+tests/golden/
+├─ fixtures/
+│  ├─ samsung_5y_prices.csv         (삼성전자 5년 일봉)
+│  ├─ kosdaq_top10_3y_prices.csv    (코스닥 시총상위 10종목 3년)
+│  └─ trading_calendar.csv
+│
+├─ strategies/
+│  ├─ golden_01_ma_cross.json
+│  ├─ golden_02_volume_breakout.json
+│  ├─ golden_03_partial_sell_cash_management.json
+│  └─ golden_04_pyramiding_weighted_avg.json
+│
+├─ expected/
+│  ├─ golden_01_summary.json
+│  ├─ golden_01_trades.json
+│  ├─ golden_01_daily_equity.json
+│  └─ ...
+│
+└─ test_golden_runs.py
+```
+
+### 15.3 Golden test 검증 절차
+
+```text
+1. fixtures의 시세 데이터 로드
+2. strategies의 전략 JSON 로드
+3. 백테스트 실행 (random_seed 고정, priority 고정)
+4. 결과를 expected/와 비교
+   - summary 핵심 지표는 정확히 일치 (total_return, mdd, win_rate, trade_count)
+   - 부동소수 비교는 호가 단위(절대 오차 1원) 또는 1e-9 상대 오차
+   - trades / daily_equity는 첫/마지막 N건 비교
+5. 불일치 시 빌드 실패
+```
+
+### 15.4 Golden run 갱신 정책
+
+```text
+의도적 동작 변경 시:
+1. PR에 변경 이유 명시
+2. 새 expected 파일을 생성하고 diff를 PR 본문에 첨부
+3. 코드 리뷰 승인 후 갱신
+
+의도하지 않은 변경 발견 시:
+정확성 정책(13 문서) 위반 가능성을 우선 의심하고 디버깅
+```
+
+### 15.5 Golden 시나리오
+
+최소 4개의 시나리오를 보장합니다.
+
+```text
+golden_01: 기본 MA cross 전략, 단일 종목, 5년
+            → MA 계산, 신호 발생, next_open 체결, 익절/손절 검증
+
+golden_02: 거래량 돌파, 다종목, priority=trading_value_desc
+            → 동시 신호 우선순위 결정론, max_daily_entries
+
+golden_03: 부분 매도, cash_shortage_rule lowest_return
+            → trade_group 분할, FIFO 매도, cash_events 정확성
+
+golden_04: allow_pyramiding=true, weighted_average
+            → 평단가 가중평균, 부분 매도 후 평단가 유지
+```
+
+### 15.6 일반 회귀 체크리스트
 
 ```text
 기존 조건 결과가 바뀌지 않았는지
 기존 백테스트 fixture 결과가 동일한지
 CSV 컬럼이 깨지지 않았는지
 API 응답 구조가 깨지지 않았는지
+DB 스키마 마이그레이션이 안전한지
 ```
 
 ---

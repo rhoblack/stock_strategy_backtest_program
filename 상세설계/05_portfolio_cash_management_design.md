@@ -9,14 +9,17 @@
 ```text
 초기 자금
 현재 예수금
-보유 종목
+보유 종목 (trade_group 단위)
 보유 수량
 평가금액
 수익률
 매수 가능 금액
 예수금 부족 처리
-일부 매도
+일부 매도 (trade_group을 쪼개서 매도)
+추가매수 (가중평균 평단가)
 ```
+
+핵심 차별 기능인 **부분 매도**가 동작하려면 한 종목 안에서도 매수 lot을 구분할 수 있어야 합니다. 이를 위해 `trade_group` 개념을 도입합니다 (07 DB 문서와 동일 모델).
 
 ---
 
@@ -44,21 +47,42 @@ PositionSizer
 
 ## 4. Position 설계
 
-보유 종목 1개를 표현합니다.
+보유 종목 1개를 표현합니다. 하나의 Position은 여러 trade_group을 가질 수 있고 (추가매수 시), 부분 매도 시 trade_group 단위로 처리됩니다.
 
 ```python
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
+
+
+@dataclass
+class TradeGroup:
+    """매수 lot 하나. 부분 매도가 진행되어도 entry 정보는 유지된다."""
+    trade_group_id: int
+    entry_date: date
+    entry_price: float          # 가중평균 평단가
+    entry_quantity: int         # 최초 매수 수량
+    remaining_quantity: int     # 부분 매도 후 남은 수량
 
 
 @dataclass
 class Position:
     symbol: str
     name: str
-    quantity: int
-    entry_price: float
-    entry_date: date
     current_price: float = 0.0
+    peak_price: float = 0.0     # trailing_stop용 (전일까지의 high 갱신값)
+    trade_groups: list[TradeGroup] = field(default_factory=list)
+
+    @property
+    def quantity(self) -> int:
+        return sum(tg.remaining_quantity for tg in self.trade_groups)
+
+    @property
+    def avg_entry_price(self) -> float:
+        """전체 trade_group 가중평균"""
+        total_qty = self.quantity
+        if total_qty == 0:
+            return 0.0
+        return sum(tg.entry_price * tg.remaining_quantity for tg in self.trade_groups) / total_qty
 
     @property
     def market_value(self) -> float:
@@ -66,13 +90,17 @@ class Position:
 
     @property
     def unrealized_profit(self) -> float:
-        return (self.current_price - self.entry_price) * self.quantity
+        return (self.current_price - self.avg_entry_price) * self.quantity
 
     @property
     def unrealized_return_pct(self) -> float:
-        if self.entry_price == 0:
+        if self.avg_entry_price == 0:
             return 0.0
-        return (self.current_price - self.entry_price) / self.entry_price * 100
+        return (self.current_price - self.avg_entry_price) / self.avg_entry_price * 100
+
+    @property
+    def first_entry_date(self) -> date:
+        return min(tg.entry_date for tg in self.trade_groups)
 ```
 
 ---
@@ -104,8 +132,10 @@ class Portfolio:
 
 ## 6. 매수 처리
 
+trade_group을 새로 발급합니다. 추가매수 시 정책에 따라 새 trade_group을 추가하거나 기존 trade_group의 평단가를 가중평균으로 갱신할 수 있습니다 (정확성 정책 13.9절).
+
 ```python
-def buy(self, symbol, name, price, quantity, date, reason):
+def buy(self, symbol, name, price, quantity, date, reason, allow_pyramiding=False):
     amount = price * quantity
 
     if amount > self.cash:
@@ -113,62 +143,120 @@ def buy(self, symbol, name, price, quantity, date, reason):
 
     self.cash -= amount
 
+    trade_group_id = self._next_trade_group_id()
+
     if symbol in self.positions:
-        # MVP에서는 추가매수 비활성화 가능
-        pass
+        if not allow_pyramiding:
+            raise ValueError(f"{symbol} 이미 보유 중이며 추가매수가 비활성화되어 있습니다.")
+        position = self.positions[symbol]
+        # 기존 trade_groups에 새 lot을 추가 (가중평균은 avg_entry_price에서 자동 계산)
+        position.trade_groups.append(
+            TradeGroup(
+                trade_group_id=trade_group_id,
+                entry_date=date,
+                entry_price=price,
+                entry_quantity=quantity,
+                remaining_quantity=quantity,
+            )
+        )
     else:
         self.positions[symbol] = Position(
             symbol=symbol,
             name=name,
-            quantity=quantity,
-            entry_price=price,
-            entry_date=date,
             current_price=price,
+            peak_price=price,
+            trade_groups=[
+                TradeGroup(
+                    trade_group_id=trade_group_id,
+                    entry_date=date,
+                    entry_price=price,
+                    entry_quantity=quantity,
+                    remaining_quantity=quantity,
+                )
+            ],
         )
 
     self.trade_logs.append({
         "date": date,
         "symbol": symbol,
-        "type": "BUY",
+        "trade_group_id": trade_group_id,
+        "execution_type": "BUY",
         "price": price,
         "quantity": quantity,
         "reason": reason,
     })
+
+    return trade_group_id
 ```
 
 ---
 
 ## 7. 매도 처리
 
-```python
-def sell(self, symbol, price, quantity, date, reason):
-    position = self.positions[symbol]
+매도는 항상 trade_group 단위로 일어납니다. 부분 매도 시 어느 trade_group에서 얼마나 빼낼지를 명시합니다.
 
-    sell_quantity = min(quantity, position.quantity)
+### 7.1 전량 매도 (지정 trade_group)
+
+```python
+def sell_trade_group(self, symbol, trade_group_id, price, quantity, date, reason):
+    position = self.positions[symbol]
+    tg = next(t for t in position.trade_groups if t.trade_group_id == trade_group_id)
+
+    sell_quantity = min(quantity, tg.remaining_quantity)
     amount = price * sell_quantity
 
-    profit = (price - position.entry_price) * sell_quantity
-    profit_rate = (price - position.entry_price) / position.entry_price * 100
+    profit = (price - tg.entry_price) * sell_quantity
+    profit_rate = (price - tg.entry_price) / tg.entry_price * 100
 
     self.cash += amount
-    position.quantity -= sell_quantity
+    tg.remaining_quantity -= sell_quantity
 
     self.trade_logs.append({
         "date": date,
         "symbol": symbol,
-        "type": "SELL",
+        "trade_group_id": trade_group_id,
+        "execution_type": "SELL",
         "price": price,
         "quantity": sell_quantity,
         "profit": profit,
         "profit_rate": profit_rate,
         "reason": reason,
+        "is_partial": sell_quantity < tg.entry_quantity,
     })
 
-    if position.quantity <= 0:
+    # trade_group이 비면 제거
+    position.trade_groups = [t for t in position.trade_groups if t.remaining_quantity > 0]
+
+    # position이 비면 제거
+    if not position.trade_groups:
         del self.positions[symbol]
 ```
 
-실제 구현에서는 수수료, 세금, 슬리피지는 ExecutionModel에서 계산 후 Portfolio에 반영합니다.
+### 7.2 종목 단위 매도 (FIFO)
+
+매도 대상 trade_group이 명시되지 않은 경우 (예: exit_signal로 종목 전체 매도) FIFO 순서로 처리합니다.
+
+```python
+def sell_symbol_fifo(self, symbol, price, quantity, date, reason):
+    position = self.positions[symbol]
+    remaining = quantity
+    for tg in sorted(position.trade_groups, key=lambda t: t.entry_date):
+        if remaining <= 0:
+            break
+        take = min(remaining, tg.remaining_quantity)
+        self.sell_trade_group(symbol, tg.trade_group_id, price, take, date, reason)
+        remaining -= take
+```
+
+### 7.3 비용 처리
+
+수수료, 거래세, 슬리피지는 ExecutionModel에서 계산해서 가격에 반영한 뒤 Portfolio에 전달합니다.
+
+```text
+체결가 (호가단위 보정) → ExecutionModel.calculate_sell_proceeds(price, qty, date)
+                       → 순수익 = gross - fee - tax
+                       → Portfolio.cash 증가
+```
 
 ---
 
@@ -293,6 +381,10 @@ largest_value
 
 ## 12. CashManager 예시 코드
 
+CashManager가 실행하는 일부 매도는 trade_group의 일부 수량만 매도하므로 trade_group 자체는 유지됩니다 (남은 수량만 감소).
+
+종목코드 정렬 tie-breaker는 결정론 보장을 위해 필수입니다 (정확성 정책 13.12).
+
 ```python
 class CashManager:
     def __init__(self, rule: dict):
@@ -320,7 +412,8 @@ class CashManager:
             price = price_provider.get_price(target.symbol, current_date)
             cash_before = portfolio.cash
 
-            portfolio.sell(
+            # FIFO로 trade_group을 순회하며 일부 매도
+            portfolio.sell_symbol_fifo(
                 symbol=target.symbol,
                 price=price,
                 quantity=quantity_to_sell,
@@ -352,17 +445,22 @@ class CashManager:
         if not positions:
             return None
 
+        # 결정론 보장: 동순위 시 종목코드 오름차순
         if method == "lowest_return":
-            return min(positions, key=lambda p: p.unrealized_return_pct)
+            return min(positions, key=lambda p: (p.unrealized_return_pct, p.symbol))
 
         if method == "highest_return":
-            return max(positions, key=lambda p: p.unrealized_return_pct)
+            return max(positions, key=lambda p: (p.unrealized_return_pct, _neg_symbol(p.symbol)))
 
         if method == "largest_value":
-            return max(positions, key=lambda p: p.market_value)
+            return max(positions, key=lambda p: (p.market_value, _neg_symbol(p.symbol)))
 
         raise ValueError(f"지원하지 않는 선택 방식입니다: {method}")
 ```
+
+`_neg_symbol`은 max 함수에서도 종목코드 오름차순 tie-breaker를 보장하기 위한 유틸입니다 (음수화 후 비교).
+
+CashManager가 자금 확보 시도를 했는데 자금이 여전히 부족하면 매수는 건너뜁니다.
 
 ---
 
@@ -429,11 +527,19 @@ reason
 초기 현금 설정이 정확한지
 매수 후 예수금 차감이 정확한지
 매도 후 예수금 증가가 정확한지
-부분 매도 후 보유 수량이 정확한지
+trade_group이 매수 시 정확히 발급되는지
+부분 매도 후 trade_group의 remaining_quantity가 정확한지
+부분 매도 후에도 trade_group의 entry_price가 유지되는지
+allow_pyramiding=true 시 가중평균 평단가가 정확한지
+allow_pyramiding=false 시 추가매수가 차단되는지
+FIFO 매도가 가장 오래된 trade_group부터 처리되는지
 수익률 낮은 종목 선택이 정확한지
 수익률 높은 종목 선택이 정확한지
 보유 금액 큰 종목 선택이 정확한지
+같은 수익률 종목들 사이에 종목코드 오름차순 결정론이 보장되는지
 예수금 충분 시 CashManager가 실행되지 않는지
 반복 옵션이 정확히 작동하는지
+일부 매도 후 자금이 여전히 부족하면 매수가 건너뛰어지는지
 현금 부족 이벤트가 기록되는지
+peak_price가 trailing_stop을 위해 정확히 갱신되는지
 ```

@@ -33,27 +33,60 @@ pandas Series[bool]
 
 ## 3. ConditionRegistry
 
-조건 타입과 실행 함수를 연결합니다.
+조건 타입과 실행 함수, 메타데이터를 함께 등록합니다.
 
 ```python
+from dataclasses import dataclass
+
+
+@dataclass
+class ConditionEntry:
+    func: callable
+    requires_position: bool
+    category: str
+
+
 class ConditionRegistry:
     def __init__(self):
-        self._conditions = {}
+        self._conditions: dict[str, ConditionEntry] = {}
 
-    def register(self, condition_type: str):
+    def register(self, condition_type: str, requires_position: bool = False, category: str = "general"):
         def decorator(func):
-            self._conditions[condition_type] = func
+            self._conditions[condition_type] = ConditionEntry(
+                func=func,
+                requires_position=requires_position,
+                category=category,
+            )
             return func
         return decorator
 
     def evaluate(self, condition_type: str, df, condition: dict):
-        if condition_type not in self._conditions:
+        entry = self._conditions.get(condition_type)
+        if entry is None:
             raise ValueError(f"등록되지 않은 조건입니다: {condition_type}")
+        if entry.requires_position:
+            raise ValueError(
+                f"{condition_type}은 포지션 조건입니다. "
+                "StrategyEngine이 아니라 BacktestEngine/Portfolio가 처리해야 합니다."
+            )
+        return entry.func(df, condition)
 
-        return self._conditions[condition_type](df, condition)
+    def evaluate_position(self, condition_type: str, position, market_row, condition: dict):
+        entry = self._conditions.get(condition_type)
+        if entry is None:
+            raise ValueError(f"등록되지 않은 조건입니다: {condition_type}")
+        if not entry.requires_position:
+            raise ValueError(f"{condition_type}은 시계열 조건입니다.")
+        return entry.func(position, market_row, condition)
 
-    def list_condition_types(self):
-        return list(self._conditions.keys())
+    def is_position_condition(self, condition_type: str) -> bool:
+        return self._conditions[condition_type].requires_position
+
+    def list_conditions(self):
+        return [
+            {"type": t, "requires_position": e.requires_position, "category": e.category}
+            for t, e in self._conditions.items()
+        ]
 
 
 condition_registry = ConditionRegistry()
@@ -112,7 +145,11 @@ def price_vs_ma(df, condition):
 
 ## 6. 주요 조건 타입
 
-MVP에서 우선 구현할 조건입니다.
+조건은 평가 주체에 따라 두 가지로 분류합니다.
+
+### 6.1 시계열 조건 (requires_position = false)
+
+`df` 시계열만으로 평가 가능. StrategyEngine이 처리. entry / exit_signal / filters에 사용.
 
 ```text
 price_change_pct
@@ -128,23 +165,57 @@ new_high_breakout
 momentum_return
 bullish_candle
 gap_pct
+market_index_filter
+```
+
+### 6.2 포지션 조건 (requires_position = true)
+
+매수가 / 보유일 / 일중 high·low가 필요. BacktestEngine + Portfolio가 처리. exit_position에만 사용 가능.
+
+```text
 take_profit
 stop_loss
 max_holding_days
+trailing_stop
 ```
 
-단, `take_profit`, `stop_loss`, `max_holding_days`는 포지션 상태가 필요하므로 BacktestEngine/Portfolio에서 처리합니다.
+### 6.3 라우팅 메커니즘
+
+ConditionRegistry에 등록된 메타데이터의 `requires_position` 플래그가 라우팅을 결정합니다.
+
+```text
+strategy.exit_signal에 requires_position=true 조건이 들어가면 validation 에러
+strategy.exit_position에 requires_position=false 조건이 들어가면 validation 에러
+```
+
+GUI는 두 영역을 분리하여 메뉴 노출 자체를 분리합니다 (BlockPalette 카테고리 분리).
 
 ---
 
 ## 7. 조건 구현 예시
 
+### 7.0 가격 필드 기본값
+
+모든 가격 기반 조건의 `price_field` 기본값은 **수정주가**입니다 (정확성 정책 13.7절).
+
+```text
+adj_close (기본)
+adj_open
+adj_high
+adj_low
+close      (원 가격, 거래대금 필터 등에서만 사용 권장)
+```
+
 ### 7.1 price_vs_ma
 
 ```python
-@condition_registry.register("price_vs_ma")
+@condition_registry.register(
+    "price_vs_ma",
+    requires_position=False,
+    category="moving_average",
+)
 def price_vs_ma(df, condition):
-    price_field = condition["price_field"]
+    price_field = condition.get("price_field", "adj_close")
     ma_period = condition["ma_period"]
     operator = condition["operator"]
 
@@ -228,6 +299,8 @@ def compare(left, operator: str, right):
 
 ## 9. StrategyEngine
 
+StrategyEngine은 entry / exit_signal / filters만 처리합니다. exit_position은 BacktestEngine이 처리합니다.
+
 ```python
 class StrategyEngine:
     def __init__(self, strategy_json: dict):
@@ -237,9 +310,11 @@ class StrategyEngine:
         df = df.copy()
 
         entry = self.strategy.get("entry")
+        exit_signal = self.strategy.get("exit_signal")
         filters = self.strategy.get("filters")
 
         df["entry_signal"] = self._build_section_signal(df, entry)
+        df["exit_signal"] = self._build_section_signal(df, exit_signal) if exit_signal else False
 
         if filters:
             df["filter_signal"] = self._build_section_signal(df, filters)
@@ -251,9 +326,15 @@ class StrategyEngine:
         return df
 
     def _build_section_signal(self, df, section):
-        conditions = section.get("conditions", [])
+        if section is None:
+            return pd.Series(False, index=df.index)
+
         logic = section.get("logic", "AND")
 
+        if logic == "GROUP":
+            return self._build_group_signal(df, section)
+
+        conditions = section.get("conditions", [])
         if not conditions:
             return pd.Series(True, index=df.index)
 
@@ -275,6 +356,26 @@ class StrategyEngine:
             return result
 
         raise ValueError(f"지원하지 않는 logic입니다: {logic}")
+
+    def _build_group_signal(self, df, section):
+        operator = section.get("operator", "OR")
+        group_signals = [
+            self._build_section_signal(df, group)
+            for group in section.get("groups", [])
+        ]
+        if not group_signals:
+            return pd.Series(True, index=df.index)
+
+        result = group_signals[0]
+        if operator == "OR":
+            for signal in group_signals[1:]:
+                result = result | signal
+        elif operator == "AND":
+            for signal in group_signals[1:]:
+                result = result & signal
+        else:
+            raise ValueError(f"지원하지 않는 GROUP operator입니다: {operator}")
+        return result
 ```
 
 ---
@@ -351,10 +452,69 @@ StrategyEngine AND/OR 조합이 정확한지
 
 ```text
 1. strategy/conditions/에 조건 함수 추가
-2. @condition_registry.register("condition_type") 등록
+2. @condition_registry.register("condition_type", requires_position=..., category=...) 등록
 3. CONDITION_DEFINITIONS에 GUI 메타데이터 추가
-4. 테스트 작성
+4. 테스트 작성 (look-ahead bias 체크 필수)
 5. API에서 조건 목록 노출 확인
+6. 가격 기반 조건이면 기본 price_field를 adj_close로 설정했는지 확인
 ```
 
 이 방식으로 조건 기능을 플러그인처럼 확장합니다.
+
+---
+
+## 14. 포지션 조건 함수 인터페이스
+
+`requires_position=True` 조건의 인터페이스는 시계열 조건과 다릅니다.
+
+```python
+def position_condition_function(
+    position,        # Portfolio.Position 인스턴스
+    market_row,      # 당일 시장 데이터 row (open, high, low, close, adj_*)
+    condition: dict,
+) -> tuple[bool, str | None]:
+    """
+    return (triggered, exit_reason)
+    triggered=True 시 exit_reason 문자열을 함께 반환.
+    """
+    ...
+```
+
+예: take_profit (정확성 정책 13.3절 참조)
+
+```python
+@condition_registry.register("take_profit", requires_position=True, category="exit_position")
+def take_profit(position, market_row, condition):
+    percent = condition["percent"]
+    trigger = condition.get("trigger", "intraday_high")
+    target_price = position.entry_price * (1 + percent / 100)
+
+    if trigger == "intraday_high":
+        if market_row["adj_high"] >= target_price:
+            return True, "take_profit"
+    elif trigger == "close":
+        if market_row["adj_close"] >= target_price:
+            return True, "take_profit"
+
+    return False, None
+```
+
+BacktestEngine은 매일 보유 포지션마다 exit_position 조건들을 순회하며 위 함수를 호출합니다.
+
+---
+
+## 15. 조건 메타데이터 등록 규칙
+
+GUI 자동화를 위해 메타데이터에는 다음을 반드시 포함합니다.
+
+```text
+type
+category
+requires_position
+name (한국어)
+sentence_template
+parameters (각 파라미터의 input_type, default, min, max, options)
+allowed_in: ["entry", "exit_signal", "exit_position", "filters"]
+```
+
+`allowed_in`은 GUI가 조건을 어느 섹션에 노출할지 결정합니다.
