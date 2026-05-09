@@ -39,7 +39,7 @@
 |---:|---|---|
 | 0 | 설계 문서 작성 + 리뷰 반영 | ✅ 완료 |
 | 0 | CLAUDE.md + 코딩 에이전트 + 작업 로그 시스템 | ✅ 완료 |
-| 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | ⬜ 미시작 |
+| 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | 🔄 진행 중 (1/9) |
 | 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | ⬜ 미시작 |
 | 3 | GUI 전략 빌더 | ⬜ 미시작 |
 | 4 | 백테스트 실행/결과 화면 | ⬜ 미시작 |
@@ -47,7 +47,9 @@
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
 | 7 | CSV/ZIP Export | ⬜ 미시작 |
 
-**현재 작업 중**: 없음 (다음 세션이 Phase 1을 시작해야 함)
+**현재 작업 중**: 없음 (Phase 1 / Step 2 — ConditionRegistry 코어 구현 — 다음에 시작)
+
+**환경 셋업 필요**: `backend/`에서 venv 셋업 후 `pip install -e ".[dev]"` 권장. 시스템 MSYS2 Python에는 pip이 없어 pytest를 직접 실행할 수 없음.
 
 ---
 
@@ -63,16 +65,16 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
-| (아직 없음) | | | | | |
+| 2026-05-09 | [001-project-skeleton](./2026-05-09-001-project-skeleton.md) | 1 | main | ✅ | 백엔드 패키지 골격 + 13개 모듈 디렉토리 + core (config/exceptions/logging) + smoke test 5건 |
 
 ---
 
 ## Phase 1 다음 작업 후보
 
-Phase 1을 시작할 때 아래 순서로 진행하는 것을 권장 (`stock_strategy_lab_software_architecture.md` 19절):
+Phase 1을 진행 중. 단계 순서 (`stock_strategy_lab_software_architecture.md` 19절):
 
-1. 프로젝트 골격 셋업 (`backend/` 폴더 + pyproject.toml + 기본 모듈 디렉토리)
-2. ConditionRegistry 코어 구현 (`strategy/registry.py`)
+1. ✅ 프로젝트 골격 셋업 — 2026-05-09-001 완료
+2. ⏭ **다음**: ConditionRegistry 코어 구현 (`strategy/registry.py`)
 3. compare 유틸리티 + indicators.py (이동평균, RSI, MACD)
 4. 기본 조건 5개 작성 (price_vs_ma / ma_cross / volume_ratio / rsi_level / take_profit)
 5. StrategyEngine 구현 (entry / exit_signal / filters)
