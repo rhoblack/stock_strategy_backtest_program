@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import BlockPalette from "./BlockPalette";
 import { useConditions } from "../../../api/conditions";
+import { StrategyDraftProvider } from "../state/StrategyDraftContext";
 import type { ConditionMeta } from "../../../types/condition";
 
 vi.mock("../../../api/conditions", () => ({
@@ -44,9 +45,15 @@ const sample: ConditionMeta[] = [
   },
 ];
 
-function renderWithClient(ui: React.ReactElement) {
+function renderPalette() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={client}>
+      <StrategyDraftProvider>
+        <BlockPalette />
+      </StrategyDraftProvider>
+    </QueryClientProvider>,
+  );
 }
 
 describe("BlockPalette", () => {
@@ -60,7 +67,7 @@ describe("BlockPalette", () => {
       isLoading: true,
       error: null,
     } as ReturnType<typeof useConditions>);
-    renderWithClient(<BlockPalette />);
+    renderPalette();
     expect(screen.getByText(/로딩 중/)).toBeInTheDocument();
   });
 
@@ -70,12 +77,10 @@ describe("BlockPalette", () => {
       isLoading: false,
       error: null,
     } as ReturnType<typeof useConditions>);
-    renderWithClient(<BlockPalette />);
+    renderPalette();
 
-    // category 헤더가 두 종류 — moving_average / exit_position
     expect(screen.getByText("moving_average")).toBeInTheDocument();
     expect(screen.getByText("exit_position")).toBeInTheDocument();
-    // 항목 이름들
     expect(screen.getByText("가격과 이동평균 비교")).toBeInTheDocument();
     expect(screen.getByText("이동평균 교차")).toBeInTheDocument();
     expect(screen.getByText("익절")).toBeInTheDocument();
@@ -87,7 +92,7 @@ describe("BlockPalette", () => {
       isLoading: false,
       error: new Error("fail"),
     } as ReturnType<typeof useConditions>);
-    renderWithClient(<BlockPalette />);
+    renderPalette();
     expect(screen.getByText(/조건 카탈로그 불러오기 실패/)).toBeInTheDocument();
   });
 });

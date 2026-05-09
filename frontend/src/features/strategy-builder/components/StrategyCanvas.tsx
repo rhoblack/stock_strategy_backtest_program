@@ -1,31 +1,98 @@
+import { useStrategyDraft } from "../state/StrategyDraftContext";
+import { type Section, SECTIONS, SECTION_LABEL } from "../state/types";
+import ConditionCard from "./ConditionCard";
+
 /**
- * 가운데 전략 조립 영역 placeholder.
- * Step 4~5에서 EntrySection / ExitSignalSection / ExitPositionSection /
- * FilterSection / CashManagementSection 카드 빌더로 채움.
+ * 전략 조립 영역. 4개 섹션 + 자금 관리 placeholder.
  */
 export default function StrategyCanvas() {
+  const { draft, dispatch } = useStrategyDraft();
+
   return (
     <main aria-label="전략 조립 영역" style={{ padding: 16, overflowY: "auto" }}>
       <h2 style={{ fontSize: 14, fontWeight: 600 }}>전략 조립 영역</h2>
 
-      {(["매수 조건", "매도 시계열 조건", "매도 포지션 조건", "필터", "자금 관리"] as const).map(
-        (label) => (
-          <section
-            key={label}
-            style={{
-              marginTop: 16,
-              padding: 12,
-              border: "1px dashed #d1d5db",
-              borderRadius: 6,
-            }}
-          >
-            <h3 style={{ fontSize: 13, fontWeight: 500, color: "#374151" }}>{label}</h3>
-            <p style={{ fontSize: 12, color: "#9ca3af" }}>
-              왼쪽 팔레트에서 조건을 추가하세요 (구현 예정).
-            </p>
-          </section>
-        ),
-      )}
+      {SECTIONS.map((section) => (
+        <SectionBlock key={section} section={section} />
+      ))}
+
+      <SectionPlaceholder label="자금 관리" />
     </main>
+  );
+
+  function SectionBlock({ section }: { section: Section }) {
+    const sec = draft.sections[section];
+    return (
+      <section
+        aria-label={SECTION_LABEL[section]}
+        style={{
+          marginTop: 16,
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 6,
+          background: "#f9fafb",
+        }}
+      >
+        <header
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 6,
+          }}
+        >
+          <h3 style={{ fontSize: 13, fontWeight: 500, color: "#374151", margin: 0 }}>
+            {SECTION_LABEL[section]}
+          </h3>
+          <label style={{ fontSize: 12, color: "#6b7280" }}>
+            조건 조합:{" "}
+            <select
+              aria-label={`${SECTION_LABEL[section]} 조합`}
+              value={sec.logic}
+              onChange={(e) =>
+                dispatch({
+                  type: "SET_LOGIC",
+                  section,
+                  logic: e.target.value as "AND" | "OR",
+                })
+              }
+              style={{ fontSize: 12 }}
+            >
+              <option value="AND">모두 만족 (AND)</option>
+              <option value="OR">하나라도 만족 (OR)</option>
+            </select>
+          </label>
+        </header>
+
+        {sec.conditions.length === 0 ? (
+          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
+            왼쪽 팔레트에서 조건을 추가하세요.
+          </p>
+        ) : (
+          <div role="list">
+            {sec.conditions.map((c) => (
+              <ConditionCard key={c.instance_id} section={section} instance={c} />
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+}
+
+function SectionPlaceholder({ label }: { label: string }) {
+  return (
+    <section
+      aria-label={label}
+      style={{
+        marginTop: 16,
+        padding: 12,
+        border: "1px dashed #d1d5db",
+        borderRadius: 6,
+      }}
+    >
+      <h3 style={{ fontSize: 13, fontWeight: 500, color: "#374151" }}>{label}</h3>
+      <p style={{ fontSize: 12, color: "#9ca3af" }}>구현 예정.</p>
+    </section>
   );
 }
