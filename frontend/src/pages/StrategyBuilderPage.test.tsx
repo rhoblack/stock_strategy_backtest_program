@@ -59,7 +59,7 @@ describe("StrategyBuilderPage", () => {
     expect(screen.getByLabelText("매도 시계열 조건")).toBeInTheDocument();
     expect(screen.getByLabelText("매도 포지션 조건")).toBeInTheDocument();
     expect(screen.getByLabelText("필터")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "전략 저장" })).toBeDisabled();
   });
 
   it("팔레트 클릭 → 매수 조건 섹션에 카드 추가 → 문장 렌더", () => {

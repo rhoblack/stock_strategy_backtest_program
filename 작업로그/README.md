@@ -43,8 +43,8 @@
 | 0 | CLAUDE.md + 코딩 에이전트 + 작업 로그 시스템 | ✅ 완료 |
 | 1 | 백엔드 핵심 엔진 (조건 5개 + StrategyEngine + 단일종목 백테스트 + Metrics) | ✅ 완료 (9/9) |
 | 2 | SQLite 저장 (users/strategies/backtest_runs/trade_groups/...) | ✅ 완료 (6/6) |
-| 3 | GUI 전략 빌더 | 🔄 진행 중 (6/7) |
-| 4 | 백테스트 실행/결과 화면 | ⬜ 미시작 |
+| 3 | GUI 전략 빌더 | ✅ 완료 (7/7) |
+| 4 | 백테스트 실행/결과 화면 | ⬜ 미시작 (다음) |
 | 5 | 종목 봉차트 + 매수/매도 마커 | ⬜ 미시작 |
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ⬜ 미시작 |
 | 7 | CSV/ZIP Export | ⬜ 미시작 |
@@ -71,6 +71,7 @@
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [004-strategy-save](./2026-05-10-004-strategy-save.md) | 3 | main | ✅ | **Phase 3 완료**: Strategy CRUD API + serialize + Save+redirect + 9건 |
 | 2026-05-10 | [003-preview-validation](./2026-05-10-003-preview-validation.md) | 3 | main | ✅ | StrategyPreviewPanel + StrategyValidationPanel + 10건 |
 | 2026-05-10 | [002-condition-editor-panel](./2026-05-10-002-condition-editor-panel.md) | 3 | main | ✅ | ConditionEditorPanel parameters 자동 폼 + 즉시 반영 + 4건 |
 | 2026-05-10 | [001-strategy-draft-state](./2026-05-10-001-strategy-draft-state.md) | 3 | main | ✅ | StrategyDraft reducer + Canvas 카드 + 추가/삭제 인터랙션 + 19건 |
@@ -130,7 +131,16 @@
 4. ✅ StrategyDraft 상태 + Canvas 카드 + 추가/삭제 — 2026-05-10-001
 5. ✅ ConditionEditorPanel 자동 폼 — 2026-05-10-002
 6. ✅ StrategyPreviewPanel + StrategyValidationPanel — 2026-05-10-003
-7. ⏭ **다음 (Phase 3 마지막)**: 전략 저장 (POST /api/strategies + 프론트 연동)
+7. ✅ 전략 저장 (Strategy CRUD + Save+redirect) — 2026-05-10-004
+
+## Phase 4 다음 작업 후보 (백테스트 실행/결과 화면)
+
+설계서 19절 Phase 4 + 04번/08번/10번:
+
+1. ⏭ **다음**: BacktestRun API (POST/GET status/cancel/summary)
+2. BacktestRunPage (전략 선택 + 기간/자금/수수료 설정 + 실행 + 진행률 폴링)
+3. BacktestResultPage (요약 카드 + 거래내역 표 + daily_equity 차트)
+4. CSV 다운로드 (간단한 trades.csv부터)
 4. BlockPalette (메타데이터 기반 자동 생성)
 5. ConditionEditorPanel (parameters 메타로 폼 자동)
 6. StrategyPreviewPanel + StrategyValidationPanel

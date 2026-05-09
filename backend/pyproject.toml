@@ -40,7 +40,8 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
-ignore = ["E501"]
+# B008: FastAPI Depends()를 default로 사용하는 표준 패턴 — 무시
+ignore = ["E501", "B008"]
 
 [tool.ruff.format]
 quote-style = "double"
