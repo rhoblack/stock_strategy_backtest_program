@@ -9,6 +9,7 @@ import 시점에 `condition_registry`에 자동 등록된다.
 
 # condition_definitions를 import하면 conditions/* 모두 로드 + 자동 등록
 from app.strategy.condition_definitions import ALL_DEFINITIONS, get_condition_catalog
+from app.strategy.engine import StrategyEngine
 from app.strategy.registry import ConditionEntry, ConditionRegistry, condition_registry
 from app.strategy.utils import ALLOWED_OPERATORS, compare
 
@@ -17,6 +18,7 @@ __all__ = [
     "ALLOWED_OPERATORS",
     "ConditionEntry",
     "ConditionRegistry",
+    "StrategyEngine",
     "compare",
     "condition_registry",
     "get_condition_catalog",
