@@ -64,6 +64,25 @@ class StrategyNotFoundError(AppError):
     code = "STRATEGY_NOT_FOUND"
 
 
+class PositionConditionMisuseError(AppError):
+    """포지션 조건을 시계열 평가(evaluate)로 호출한 경우.
+
+    보통은 schema validator가 먼저 잡아야 하는 프로그래머 오류.
+    StrategyEngine에서 `requires_position=True`인 조건을 처리하려고 할 때 발생.
+    """
+
+    code = "POSITION_CONDITION_MISUSE"
+
+
+class TimeseriesConditionMisuseError(AppError):
+    """시계열 조건을 포지션 평가(evaluate_position)로 호출한 경우.
+
+    BacktestEngine/Portfolio에서 `requires_position=False`인 조건을 처리하려고 할 때 발생.
+    """
+
+    code = "TIMESERIES_CONDITION_MISUSE"
+
+
 # === 백테스트 ===
 
 
