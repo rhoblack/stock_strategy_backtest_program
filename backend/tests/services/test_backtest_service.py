@@ -589,3 +589,169 @@ def test_golden_fixture_regression_cost_zero(db_session, user, strategy):
         assert ex.tax == 0.0
         # gross == net (비용 0)
         assert ex.gross_amount == pytest.approx(ex.net_amount, abs=1e-9)
+
+
+# ==========================================================================
+# 017 — TradeExecution.signal_date 영속화 회귀 (07-m)
+# ==========================================================================
+
+
+def test_trade_executions_persist_signal_date_for_buy(db_session, user, strategy):
+    """BUY는 next_open 체결 (015 정합화) → signal_date < execution_date.
+
+    Phase 1 골든 fixture(seed=42, n=90)는 entry=price_vs_ma 단일 조건이라
+    모든 BUY가 next_open으로 체결된다. signal_date(신호 발생일) 컬럼이 채워지고,
+    execution_date(체결일)와 다른지 확인.
+    """
+    df = _build_synthetic_series(seed=42, n=90)
+
+    run = backtest_service.create_backtest_run(
+        db_session,
+        user_id=user.id,
+        strategy_id=strategy.id,
+        run_name="signal-date-buy",
+        universe_config={"symbol": "GOLDEN", "position_size_amount": 5_000_000},
+        start_date=df["date"].iloc[0],
+        end_date=df["date"].iloc[-1],
+        initial_cash=10_000_000.0,
+        fee_rate=0.0,
+        tax_rate=0.0,
+        slippage=0.0,
+        tick_rounding="nearest",
+    )
+    backtest_service.run_backtest(db_session, run.id, df)
+
+    buys = (
+        db_session.query(TradeExecution)
+        .filter_by(run_id=run.id, execution_type=TradeExecutionType.BUY)
+        .order_by(TradeExecution.id)
+        .all()
+    )
+    assert buys, "BUY가 0건이면 signal_date 회귀를 검증할 수 없음"
+
+    for buy in buys:
+        # signal_date는 NOT NULL이어야 함 (015에서 portfolio.buy가 항상 채움)
+        assert buy.signal_date is not None
+        # next_open 체결 → signal_date(신호일) < execution_date(다음 거래일)
+        assert buy.signal_date < buy.execution_date, (
+            f"BUY signal_date={buy.signal_date} < execution_date="
+            f"{buy.execution_date} 기대 (015 next_open 정합화)"
+        )
+
+
+def test_trade_executions_persist_signal_date_for_intraday_sell(
+    db_session, user, strategy
+):
+    """일중 take_profit/stop_loss 매도는 당일 체결 → signal_date == execution_date.
+
+    Phase 1 골든 fixture는 exit_position이 (take_profit intraday_high, stop_loss)
+    뿐이라 모든 SELL이 당일 체결. portfolio.sell_*가 signal_date=None으로 호출되어
+    on_date(=execution_date) fallback이 적용된다.
+    """
+    df = _build_synthetic_series(seed=42, n=90)
+
+    run = backtest_service.create_backtest_run(
+        db_session,
+        user_id=user.id,
+        strategy_id=strategy.id,
+        run_name="signal-date-sell",
+        universe_config={"symbol": "GOLDEN", "position_size_amount": 5_000_000},
+        start_date=df["date"].iloc[0],
+        end_date=df["date"].iloc[-1],
+        initial_cash=10_000_000.0,
+        fee_rate=0.0,
+        tax_rate=0.0,
+        slippage=0.0,
+        tick_rounding="nearest",
+    )
+    backtest_service.run_backtest(db_session, run.id, df)
+
+    sells = (
+        db_session.query(TradeExecution)
+        .filter_by(run_id=run.id)
+        .filter(
+            TradeExecution.execution_type.in_(
+                (TradeExecutionType.SELL, TradeExecutionType.PARTIAL_SELL)
+            )
+        )
+        .order_by(TradeExecution.id)
+        .all()
+    )
+    assert sells, "SELL이 0건이면 회귀를 검증할 수 없음"
+
+    for sell in sells:
+        # 당일 체결 — portfolio.sell_*가 signal_date None을 받아 on_date로 fallback
+        # → signal_date NOT NULL & == execution_date
+        assert sell.signal_date is not None
+        assert sell.signal_date == sell.execution_date, (
+            f"intraday SELL signal_date={sell.signal_date} == execution_date="
+            f"{sell.execution_date} 기대 (당일 체결)"
+        )
+
+
+def test_trade_executions_persist_signal_date_for_exit_signal_sell(db_session, user):
+    """exit_signal로 매도하는 케이스는 next_open 체결 → signal_date < execution_date.
+
+    exit_signal에 시계열 조건(price_vs_ma)을 두면 매도가 다음 거래일 시가로
+    체결된다. 이때 signal_date == today(신호일), execution_date == 다음 거래일.
+    """
+    # exit_signal에 시계열 조건을 둔 전략 — exit_position 없음
+    strategy_json = {
+        "name": "exit_signal next_open 매도",
+        "entry": {
+            "logic": "AND",
+            "conditions": [
+                {"type": "price_vs_ma", "ma_period": 5, "operator": ">"},
+            ],
+        },
+        "exit_signal": {
+            "logic": "AND",
+            "conditions": [
+                {"type": "price_vs_ma", "ma_period": 5, "operator": "<"},
+            ],
+        },
+    }
+    strat = strategy_service.create_strategy(
+        db_session, user_id=user.id, name="exit_signal", strategy_json=strategy_json
+    )
+
+    df = _build_synthetic_series(seed=42, n=90)
+
+    run = backtest_service.create_backtest_run(
+        db_session,
+        user_id=user.id,
+        strategy_id=strat.id,
+        run_name="signal-date-exit-signal",
+        universe_config={"symbol": "GOLDEN", "position_size_amount": 5_000_000},
+        start_date=df["date"].iloc[0],
+        end_date=df["date"].iloc[-1],
+        initial_cash=10_000_000.0,
+        fee_rate=0.0,
+        tax_rate=0.0,
+        slippage=0.0,
+        tick_rounding="nearest",
+    )
+    backtest_service.run_backtest(db_session, run.id, df)
+
+    sells = (
+        db_session.query(TradeExecution)
+        .filter_by(run_id=run.id)
+        .filter(
+            TradeExecution.execution_type.in_(
+                (TradeExecutionType.SELL, TradeExecutionType.PARTIAL_SELL)
+            )
+        )
+        .order_by(TradeExecution.id)
+        .all()
+    )
+    assert sells, (
+        "exit_signal next_open 매도가 0건이면 시나리오 검증 불가 — 합성 데이터 검토"
+    )
+
+    for sell in sells:
+        # exit_signal next_open → signal_date < execution_date
+        assert sell.signal_date is not None
+        assert sell.signal_date < sell.execution_date, (
+            f"exit_signal SELL signal_date={sell.signal_date} < execution_date="
+            f"{sell.execution_date} 기대 (next_open 정합화)"
+        )

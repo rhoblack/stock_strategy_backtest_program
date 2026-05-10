@@ -94,6 +94,13 @@ class TradeExecution(Base):
     )
 
     execution_date: Mapped[date_type] = mapped_column(Date, nullable=False, index=True)
+    # 신호 발생일 (next_open 체결의 경우 execution_date보다 1 거래일 앞).
+    # 갭/일중 stop·take/trailing/max_holding/cash_manager 강제 매도는 당일 체결이라
+    # signal_date == execution_date. 마이그레이션 이전 기존 row와 호환을 위해 NULL 허용.
+    # (017 step / CLAUDE.md look-ahead 체크리스트 + 13.15 정책)
+    signal_date: Mapped[date_type | None] = mapped_column(
+        Date, nullable=True, default=None
+    )
     execution_type: Mapped[TradeExecutionType] = mapped_column(
         SAEnum(TradeExecutionType, native_enum=False, length=20), nullable=False
     )

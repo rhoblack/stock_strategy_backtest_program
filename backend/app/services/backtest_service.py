@@ -356,11 +356,20 @@ def _persist_trade_groups_and_executions(
             fee = ex.get("fee", 0.0)
             tax = ex.get("tax", 0.0)
 
+            # 015 도입 — signal_date(신호 발생일)와 execution_date(체결일)는 서로
+            # 다를 수 있다. ex["date"]는 호환을 위해 execution_date와 동일 값을
+            # 유지하므로 execution_date는 그대로 ex["date"]를 사용. signal_date는
+            # 015에서 portfolio.buy/sell_*가 채워주는 값(매수/exit_signal 매도는
+            # today, 갭/일중/cash_manager는 None → on_date로 fallback)을 그대로
+            # 영속화. .get()으로 None 허용 — alembic 마이그레이션 이전 코드 경로/
+            # legacy fixture와도 호환.
+            signal_date = ex.get("signal_date")
             session.add(
                 TradeExecution(
                     trade_group_id=db_tg_id,
                     run_id=run.id,
                     execution_date=ex["date"],
+                    signal_date=signal_date,
                     execution_type=execution_type,
                     price=ex["price"],
                     quantity=ex["quantity"],

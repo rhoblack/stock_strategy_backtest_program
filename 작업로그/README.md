@@ -87,6 +87,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [017-signal-date-persistence](./2026-05-10-017-signal-date-persistence.md) | 9 | backend-api-engineer | ✅ | **07-m 해소**: TradeExecution.signal_date 컬럼 + alembic + service 매핑 + env.py 부수 픽스(silent-skip 정상화) + 466 collected/465 passed (1 fail은 016 자기-소유 head 가드) |
 | 2026-05-10 | [016-market-data-models-skeleton](./2026-05-10-016-market-data-models-skeleton.md) | 9 | market-data-engineer | ✅ | **시장데이터 트랙 1단계**: symbols/daily_prices/trading_calendar 모델 + alembic + repositories CRUD 9종 + 35건 신규 (LocalCsvProvider/PriceLoader/UniverseSelector는 016b 후속) |
 | 2026-05-10 | [015-execution-date-separation](./2026-05-10-015-execution-date-separation.md) | 9 | backtest-engine-developer | ✅ | **체결일 정합성 (외부 4.13)**: signal_date vs execution_date 분리 + next_date NaN skip + 골든 갱신 (avg_holding_days 7.5→6.5, 첫 거래 +1일) + 10건 신규 |
 | 2026-05-10 | [014-execution-persistence-and-daily-return](./2026-05-10-014-execution-persistence-and-daily-return.md) | 8 | backend-api-engineer | ✅ | **Phase 8 완료** ✅ (Critical 5/5): TradeExecution fee/tax + DailyEquity daily/cumulative + cash_events 분해 영속화 + alembic + 418 PASS |
@@ -204,16 +205,17 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 4. ✅ ExecutionResult dataclass + cash_manager의 ExecutionModel 주입 (C2 + H1 + M2 + M4) — 2026-05-10-013 (backtest-engine-developer)
 5. ✅ TradeExecution.fee/tax + DailyEquity.daily/cumulative + cash_events 분해 영속화 + alembic 마이그레이션 (M5 + 외부 4.7) — 2026-05-10-014 (backend-api-engineer)
 
-## Phase 9 진행 중 (시장데이터 1단계 + 정확성 잔존)
+## Phase 9 진행 중 (시장데이터 1단계 + 정확성 잔존, 3/5 step 완료)
 
 ### 완료
 - ✅ 015 체결일 정합성 (signal_date vs execution_date)
 - ✅ 016 시장데이터 3종 모델 + repositories 스켈레톤
+- ✅ 017 signal_date 영속화 (TradeExecution + alembic + service)
 
 ### 다음 작업 후보 + Phase 10~13 계획
 **단일 출처**: [`로드맵.md`](../로드맵.md) "Phase 로드맵" 섹션.
-- ⏭ 다음: step 017 — signal_date 영속화 (TradeExecution 컬럼 + alembic + service 매핑)
-- step 018·019: LocalCsvProvider + PriceLoader + UniverseSelector
+- ⏭ 다음: step 018 — LocalCsvProvider + PriceLoader (016b)
+- step 019: UniverseSelector + 06번 §8 공통 필터
 - Phase 10·11·12·13 전체 계획은 로드맵 참조
 
 각 단계는 별도 작업 로그 파일을 만들어 진행합니다.
