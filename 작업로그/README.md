@@ -52,7 +52,8 @@
 | 9 | 정확성 잔존(015·017) + 시장데이터 1단계(016·018·019) — test-engineer ship-go | ✅ 완료 (5 step) |
 | 10 | BacktestEngine 복수 종목 + priority + 한도 + event_log + 강제매도 (외부 CR-003) — test-engineer ship-go | ✅ 완료 (4 step) |
 | 11 | 데이터 파이프라인 본체 (collectors / processors / jobs / scheduler / 결손 알림) — test-engineer ship-go | ✅ 완료 (5 step) |
-| 12 | UI 확장 (02 schema GUI 정합화 + 차트 탭 + 종목 선택 + TanStack Table) | 🔄 다음 |
+| 12 | UI 확장 (StrategyConfigPanel + StrategyHeader + chart-data DB + 6 탭 5 차트 + TanStack Table + UniverseSelector) — test-engineer ship-go | ✅ 완료 (5 step) |
+| 13 | 정확성 잔존 + Export + 운영 (KRW Decimal / symbol_performance / API 잔존 / 카탈로그 정식화 / alembic 정상화) | 🔄 다음 |
 
 **현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 **Critical 5/5 모두 해소** + 외부 4.7 일괄 — 신뢰성 기반 정합화 완료. 다음 단계는 시장데이터/복수종목 트랙)
 
@@ -91,6 +92,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [phase12-test-engineer-verification](./2026-05-10-phase12-test-engineer-verification.md) | 12 | test-engineer | ✅ | **Phase 12 완료 검증 🟢 ship-go**: 백엔드 844 PASS (+19) / 프론트엔드 162 PASS (+119) / 13.x·02.x acceptance 모두 통과 / 골든 9지표 유지 / e2e 5건 신규 |
 | 2026-05-10 | [033-table-universe-compare](./2026-05-10-033-table-universe-compare.md) | 12 | frontend-developer | ✅ | **08-m + 11-f·g·h 해소 / Phase 12 마지막 step**: TanStack Table v8(거래 탭 정렬/필터/페이징) + 거래 클릭 차트 이동(setVisibleRange) + UniverseSelector UI(019 백엔드 활용 + MANUAL fallback) + StrategyComparePage 골격 + components/layout·ui·hooks·utils 정합화 + 신규 vitest 31건 (전체 162 PASS) — **75% 돌파** 🎉, test-engineer 검증 대기 |
 | 2026-05-10 | [032-result-page-tabs-and-charts](./2026-05-10-032-result-page-tabs-and-charts.md) | 12 | frontend-developer | ✅ | **08-f·g·h·i·j·k 해소 (6 항목)**: BacktestResultPage 6 탭(요약/거래/자산/월별/리스크/자금) + 5 차트(Drawdown/Cash/Positions/Volume/Benchmark) + SymbolSelector(chart-data symbol query 활용) + 신규 vitest 20건 (전체 131 PASS) — 74% |
 | 2026-05-10 | [031-chart-data-from-daily-prices](./2026-05-10-031-chart-data-from-daily-prices.md) | 12 | backend-api-engineer | ✅ | **08-l + 10-l 해소 (H2/외부 4.8)**: chart-data DB 전환(daily_prices + trade_executions + daily_equity) + ChartDataQuery 5종(symbol/start_date/end_date/use_adjusted/downsample) + APP_ENV dev fallback + 신규 14건 (전체 839 PASS) — 71% |
@@ -228,21 +230,21 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 4. ✅ ExecutionResult dataclass + cash_manager의 ExecutionModel 주입 (C2 + H1 + M2 + M4) — 2026-05-10-013 (backtest-engine-developer)
 5. ✅ TradeExecution.fee/tax + DailyEquity.daily/cumulative + cash_events 분해 영속화 + alembic 마이그레이션 (M5 + 외부 4.7) — 2026-05-10-014 (backend-api-engineer)
 
-## Phase 11 완료 ✅ (5/5 step + test-engineer 🟢 ship-go)
+## Phase 12 완료 ✅ (5/5 step + test-engineer 🟢 ship-go)
 
 ### 완료 step
-- ✅ 024 data_pipeline 패키지 골격 + ABC + 예외 계층
-- ✅ 025 PykrxCollector + retry(jitter 없음) + validators(HARD/SOFT)
-- ✅ 026 corporate_actions + AdjustedPriceProcessor (분할/배당, idempotent)
-- ✅ 027 market_indices + universe_history + repositories 4종
-- ✅ 028 5 jobs + Scheduler 락 + MissingDataCheckJob (forward-fill 금지)
-- ✅ test-engineer 검증: 825 passed (+209) / 13.x·14.x 9개 정책 ✅ / Phase 1 골든 9지표 유지 / e2e 5건 신규
+- ✅ 029 02 schema GUI 정합화 (StrategyConfigPanel 6 폼 + GROUP + tax_rate 시계열) — **02 100%**
+- ✅ 030 StrategyHeader (복사/JSON/백테스트 실행) + 4 템플릿 + 초보/전문 모드 — **01 100%**
+- ✅ 031 chart-data → daily_prices DB 전환 + ChartDataQuery 5 옵션 (H2 / 외부 4.8)
+- ✅ 032 BacktestResultPage 6 탭 + 5 차트(Drawdown/Cash/Positions/Volume/Benchmark) + SymbolSelector
+- ✅ 033 TanStack Table + 거래 클릭 차트 이동 + UniverseSelector UI + StrategyComparePage 골격
+- ✅ test-engineer 검증: backend 844 (+19) + frontend 162 (+119) / 13.x·02.x acceptance ✅ / 골든 9지표 유지 / e2e 5건 신규
 
-## Phase 12 다음 진입 — UI 확장
+## Phase 13 다음 진입 — 정확성 잔존 + Export + 운영
 
-⏭ 다음: step 029 — 02 schema GUI 정합화 (position_sizing/cash_management/risk_management/execution/priority/metadata 6섹션 폼) (frontend-developer)
+⏭ 다음: step 034 — KRW Decimal/int 통화 처리 + DB query ORDER BY 표준화 (backtest-engine-developer + backend-api-engineer)
 
-Phase 12~13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
+Phase 13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 
 ---
 
