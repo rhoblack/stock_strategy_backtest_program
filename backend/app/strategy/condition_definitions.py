@@ -15,6 +15,7 @@ get_condition_catalog(): registry 등록 정보와 META를 합친 dict 리스트
 from __future__ import annotations
 
 from app.strategy.conditions import exit_position as _exit_position
+from app.strategy.conditions import macd as _macd
 from app.strategy.conditions import moving_average as _moving_average
 from app.strategy.conditions import rsi as _rsi
 from app.strategy.conditions import trading_value as _trading_value
@@ -29,6 +30,8 @@ ALL_DEFINITIONS: dict[str, dict] = {
     _rsi.RSI_LEVEL_META["type"]: _rsi.RSI_LEVEL_META,
     _trading_value.AVG_TRADING_VALUE_META["type"]: _trading_value.AVG_TRADING_VALUE_META,
     _trading_value.MARKET_INDEX_FILTER_META["type"]: _trading_value.MARKET_INDEX_FILTER_META,
+    _macd.MACD_CROSS_META["type"]: _macd.MACD_CROSS_META,
+    _macd.MACD_HISTOGRAM_META["type"]: _macd.MACD_HISTOGRAM_META,
     _exit_position.TAKE_PROFIT_META["type"]: _exit_position.TAKE_PROFIT_META,
     _exit_position.STOP_LOSS_META["type"]: _exit_position.STOP_LOSS_META,
     _exit_position.MAX_HOLDING_DAYS_META["type"]: _exit_position.MAX_HOLDING_DAYS_META,

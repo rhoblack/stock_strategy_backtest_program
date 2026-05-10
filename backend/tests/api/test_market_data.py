@@ -7,10 +7,9 @@
 - SYMBOL_NOT_FOUND, MARKET_DATA_NOT_FOUND 에러 envelope 확인
 """
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
-
 
 # ── 공통 fixture: DB에 심볼 + 일봉 + 캘린더 삽입
 
@@ -52,7 +51,7 @@ def _insert_daily_price(session, symbol: str = "005930", trade_date: date = date
         adj_close=71000,
         adj_volume=1000000,
         market_cap=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     session.add(dp)
     session.flush()
@@ -67,7 +66,7 @@ def _insert_trading_calendar(session, trade_date: date = date(2024, 1, 2), marke
         market=market,
         is_trading_day=is_trading,
         holiday_name=None if is_trading else "신정",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     session.add(tc)
     session.flush()

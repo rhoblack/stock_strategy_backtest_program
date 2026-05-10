@@ -49,3 +49,40 @@ def test_price_vs_ma_default_price_field_is_adj_close(client):
     cond = next(i for i in items if i["type"] == "price_vs_ma")
     price_field_param = next(p for p in cond["parameters"] if p["name"] == "price_field")
     assert price_field_param["default"] == "adj_close"
+
+
+def test_list_conditions_includes_macd_cross(client):
+    """GET /api/conditions 응답에 macd_cross 포함."""
+    r = client.get("/api/conditions")
+    assert r.status_code == 200
+    types = {item["type"] for item in r.json()}
+    assert "macd_cross" in types
+
+
+def test_list_conditions_includes_macd_histogram(client):
+    """GET /api/conditions 응답에 macd_histogram 포함."""
+    r = client.get("/api/conditions")
+    assert r.status_code == 200
+    types = {item["type"] for item in r.json()}
+    assert "macd_histogram" in types
+
+
+def test_macd_histogram_allowed_in_filters(client):
+    """macd_histogram은 filters에서 사용 가능 (시계열 조건이므로 entry/exit_signal/filters 허용)."""
+    items = client.get("/api/conditions").json()
+    hist_item = next(i for i in items if i["type"] == "macd_histogram")
+    assert "filters" in hist_item["allowed_in"]
+
+
+def test_macd_cross_not_allowed_in_exit_position(client):
+    """macd_cross는 exit_position에 노출되지 않아야 함."""
+    items = client.get("/api/conditions").json()
+    cross_item = next(i for i in items if i["type"] == "macd_cross")
+    assert "exit_position" not in cross_item["allowed_in"]
+
+
+def test_macd_cross_requires_position_false_in_api(client):
+    """macd_cross API 응답에서 requires_position=False 확인."""
+    items = client.get("/api/conditions").json()
+    cross_item = next(i for i in items if i["type"] == "macd_cross")
+    assert cross_item["requires_position"] is False

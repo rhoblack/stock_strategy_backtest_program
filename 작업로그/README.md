@@ -53,7 +53,7 @@
 | 10 | BacktestEngine 복수 종목 + priority + 한도 + event_log + 강제매도 (외부 CR-003) — test-engineer ship-go | ✅ 완료 (4 step) |
 | 11 | 데이터 파이프라인 본체 (collectors / processors / jobs / scheduler / 결손 알림) — test-engineer ship-go | ✅ 완료 (5 step) |
 | 12 | UI 확장 (StrategyConfigPanel + StrategyHeader + chart-data DB + 6 탭 5 차트 + TanStack Table + UniverseSelector) — test-engineer ship-go | ✅ 완료 (5 step) |
-| 13 | 정확성 잔존 + Export + 운영 (KRW Decimal / symbol_performance / API 잔존 / 카탈로그 정식화 / alembic 정상화) | 🔄 진행 중 (2/6) |
+| 13 | 정확성 잔존 + Export + 운영 (KRW Decimal / symbol_performance / API 잔존 / 카탈로그 정식화 / alembic 정상화) — test-engineer 🟢 ship-go | ✅ 완료 (7 step) |
 
 **현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 **Critical 5/5 모두 해소** + 외부 4.7 일괄 — 신뢰성 기반 정합화 완료. 다음 단계는 시장데이터/복수종목 트랙)
 

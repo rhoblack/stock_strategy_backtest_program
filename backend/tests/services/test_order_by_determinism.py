@@ -8,7 +8,7 @@ CLAUDE.md #8 / 13번 §12.1 정책 준수.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, timedelta
 
 import numpy as np
 import pandas as pd
@@ -19,7 +19,6 @@ from app.models.cash_event import CashEvent
 from app.models.daily_equity import DailyEquity
 from app.models.trade import TradeExecution, TradeGroup
 from app.services import backtest_service, strategy_service
-
 
 # ---------------------------------------------------------------------------
 # 공통 fixture
@@ -215,10 +214,8 @@ def test_daily_equity_sorted_by_date_then_id(db_session, completed_run):
 def test_cash_events_order_deterministic_with_multiple_events(db_session, user):
     """같은 날짜에 여러 CashEvent가 있을 때 id 기준 결정론 확인."""
     # strategy + run 없이 직접 CashEvent 삽입 (단위 테스트)
-    from datetime import timezone
 
-    from app.models.backtest import BacktestRun, BacktestStatus
-    from app.models.strategy import Strategy
+    from app.models.backtest import BacktestRun
 
     strat = strategy_service.create_strategy(
         db_session,
@@ -241,7 +238,7 @@ def test_cash_events_order_deterministic_with_multiple_events(db_session, user):
         tax_rate_json=0.0,
         slippage=0.0,
         status=BacktestStatus.COMPLETED,
-        created_at=dt.now(timezone.utc),
+        created_at=dt.now(UTC),
     )
     db_session.add(run)
     db_session.flush()
@@ -256,7 +253,7 @@ def test_cash_events_order_deterministic_with_multiple_events(db_session, user):
                 event_type="cash_shortage",
                 cash_before=float(500_000 - i * 1000),
                 cash_after=float(400_000 - i * 1000),
-                created_at=dt.now(timezone.utc),
+                created_at=dt.now(UTC),
             )
         )
     db_session.commit()

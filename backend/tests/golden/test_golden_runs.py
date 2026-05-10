@@ -23,7 +23,6 @@ from app.strategy.engine import StrategyEngine
 
 from .conftest import build_synthetic_series, load_expected, load_strategy
 
-
 # ============================================================================
 # 헬퍼
 # ============================================================================
@@ -74,7 +73,6 @@ def test_golden_01_file_based_strategy_matches_expected():
     실제 백테스트 결과가 expected 값과 일치해야 함.
     (integration/test_phase1_golden.py와 동일한 결과를 검증하는 파일 기반 중복 보증)
     """
-    from datetime import date
 
     strategy = load_strategy("golden_01_ma_cross")
     expected = load_expected("golden_01_summary")

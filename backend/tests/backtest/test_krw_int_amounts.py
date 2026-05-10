@@ -14,7 +14,6 @@ step 034 — 트랙 A (13-s: 통화 KRW Decimal/int)
 
 from __future__ import annotations
 
-import math
 from datetime import date, timedelta
 
 import numpy as np
@@ -24,12 +23,11 @@ import pytest
 import app.strategy  # noqa: F401 — 5개 기본 조건 자동 등록
 from app.backtest.config import BacktestConfig
 from app.backtest.engine import BacktestEngine
-from app.backtest.execution import ExecutionModel, ExecutionResult, _round_krw
+from app.backtest.execution import ExecutionModel, _round_krw
 from app.backtest.metrics import calculate_metrics
-from app.backtest.result import BacktestResult, DailyEquity
+from app.backtest.result import BacktestResult
 from app.portfolio.portfolio import Portfolio
 from app.strategy.engine import StrategyEngine
-
 
 # ============================================================================
 # 헬퍼
@@ -305,10 +303,10 @@ class TestDailyEquityIntTypes:
         assert result.daily_equity, "daily_equity가 비어있으면 검증 불가"
         for de in result.daily_equity:
             assert isinstance(de.cash, int), f"cash must be int, got {type(de.cash)}"
-            assert isinstance(de.stock_value, int), f"stock_value must be int"
-            assert isinstance(de.total_equity, int), f"total_equity must be int"
+            assert isinstance(de.stock_value, int), "stock_value must be int"
+            assert isinstance(de.total_equity, int), "total_equity must be int"
             # drawdown은 비율 float
-            assert isinstance(de.drawdown, float), f"drawdown must be float"
+            assert isinstance(de.drawdown, float), "drawdown must be float"
 
     def test_total_equity_equals_cash_plus_stock(self):
         """total_equity == cash + stock_value (정수 덧셈이라 정확히 일치)."""

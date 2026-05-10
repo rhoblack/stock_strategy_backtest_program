@@ -28,7 +28,6 @@ from app.core.cancellation import (
 from app.portfolio.portfolio import Portfolio
 from app.strategy.engine import StrategyEngine
 
-
 # === 합성 데이터 생성 헬퍼 ===
 
 def _make_synthetic_df(n: int = 30) -> pd.DataFrame:
