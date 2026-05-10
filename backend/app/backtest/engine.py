@@ -6,6 +6,10 @@
 03번 §4 + CLAUDE.md 핵심원칙 #2 (ConditionRegistry 라우팅 통일).
 
 Phase 10 step 020 — 복수 종목 입력 지원 (외부 리뷰 CR-003).
+Phase 10 step 021 — priority 알고리즘 + symbol_asc tie-breaker + random_seed
+실사용 (04-k / 13-n / 13-o / M7 잔존 해소). config.priority_method로 후보 정렬을
+선택하고, "random" method는 config.random_seed로 결정론 보장. default
+priority_method="none"이면 020과 동작 동일 (Phase 1 골든 fixture 호환).
 
 신호일(signal_date) vs 체결일(execution_date) 분리 — 015 정합성 수정:
     next_open 체결 경로(신규 매수, exit_signal 매도)는 신호일과 체결일이
@@ -43,7 +47,11 @@ Phase 10 step 020 — 복수 종목 입력 지원 (외부 리뷰 CR-003).
 
     2. 신규 매수 후보 수집 (active universe × 미보유 × final_entry_signal True):
         - active universe는 universe_resolver(today)가 결정 (미지정 시 prices.keys())
-        - 후보 정렬: symbol ASC tie-breaker (priority 알고리즘은 step 021)
+        - 후보 정렬: config.priority_method 적용 (step 021)
+            - "none" (default)        → symbol ASC만 (020 동작 그대로)
+            - "trading_value_desc"    → today close × volume 내림차순 + symbol ASC
+            - "market_cap_desc"       → today market_cap 내림차순 + symbol ASC
+            - "random" + random_seed  → rng.random() 키 + symbol ASC tie-breaker
 
     3. 매수 처리 (정렬된 후보 순회 — max_positions 미적용, step 022 영역):
         - 후보별로 _maybe_buy 호출
@@ -58,6 +66,7 @@ exit_signal 매도가 모두 skip된다. exit_position(갭/일중/trailing/max_h
 
 from __future__ import annotations
 
+import random
 from collections.abc import Callable
 from datetime import date as date_type
 from typing import Any
@@ -106,6 +115,18 @@ class BacktestEngine:
         # cash_events 누적 (서비스가 영속화)
         self.cash_events: list[dict] = []
 
+        # === priority="random" 결정론 시드 (13-o, M7 해소) ===
+        # Phase 8 이전에는 random_seed가 BacktestRun에 영속화만 되고 사용처가 없는
+        # M7 잔존이었다. step 021부터 BacktestEngine 생성 시 random.Random(seed)를
+        # 인스턴스화하여 priority_method="random"이 그것을 사용하도록 한다.
+        # config.__post_init__가 random일 때 seed=None을 차단하므로, 여기서는
+        # seed가 None이 아닌 경우만 RNG를 만든다 (다른 method는 RNG 미사용).
+        self._rng: random.Random | None = (
+            random.Random(self.config.random_seed)
+            if self.config.random_seed is not None
+            else None
+        )
+
     def run(
         self,
         prices: dict[str, pd.DataFrame] | pd.DataFrame,
@@ -143,8 +164,9 @@ class BacktestEngine:
         - 결정론: 종목 순회는 `sorted(...)`로 명시 정렬. dict 순회 의존 없음.
         - look-ahead bias 차단: next_date는 미리 채우지만 본 row 평가에서 next 가격/
           조건을 사용하지 않음. 매일 today를 기준으로 그 시점의 universe만 매수 후보.
-        - 후보 정렬: 본 step에서는 symbol ASC만. priority 알고리즘은 step 021에서
-          본 메서드의 후보 정렬 부분(_collect_entry_candidates)을 교체.
+        - 후보 정렬: _collect_entry_candidates(symbol ASC) → _apply_priority
+          (config.priority_method 적용). step 022가 _apply_priority 다음 단계
+          (max_positions / max_daily_entries / daily_buy_budget)를 추가한다.
         """
         prices_dict = self._normalize_prices(prices)
 
@@ -230,6 +252,9 @@ class BacktestEngine:
                 active_universe=active_universe,
                 rows_by_date=rows_by_date,
             )
+            # priority 알고리즘 적용 (정확성 정책 13.8 + 04번 §11).
+            # default priority_method="none"이면 입력 순서(symbol ASC) 그대로 반환.
+            entry_candidates = self._apply_priority(entry_candidates)
             held_at_open_set = set(held_at_open)
             for symbol, row in entry_candidates:
                 # today 시작 시점에 보유 중이던 종목은 (같은 today에 청산되어
@@ -371,9 +396,9 @@ class BacktestEngine:
     ) -> list[tuple[str, pd.Series]]:
         """active_universe 중 final_entry_signal=True인 후보를 (symbol, row)로 반환.
 
-        본 step에서는 symbol ASC tie-breaker만 적용. priority 알고리즘은 step 021
-        에서 본 메서드를 교체하여 도입한다. 따라서 본 메서드의 시그니처/위치를
-        다음 step이 참조한다.
+        본 메서드는 후보 *수집*만 담당. priority 정렬은 _apply_priority가 별도로
+        수행한다. 입력 순서(symbol ASC, _resolve_active_universe에서 강제)가
+        그대로 출력 순서가 되며, _apply_priority가 그 위에 method별 정렬을 덮어쓴다.
 
         결정론: active_universe는 sorted된 상태로 들어옴 (_resolve_active_universe
         에서 강제). 본 메서드는 그 순서를 그대로 유지한다.
@@ -393,6 +418,86 @@ class BacktestEngine:
                 continue
             candidates.append((symbol, row))
         return candidates
+
+    def _apply_priority(
+        self,
+        candidates: list[tuple[str, pd.Series]],
+    ) -> list[tuple[str, pd.Series]]:
+        """후보를 config.priority_method로 정렬 (정확성 정책 13.8 + 04번 §11).
+
+        모든 method의 정렬 키 마지막 요소는 **symbol ASC** (CLAUDE.md #8 — dict
+        순회 의존 금지, tie-breaker symbol_asc로 결정론 보장).
+
+        지원 method:
+            - "none":               symbol ASC만 (020 호환 default)
+            - "trading_value_desc": today (close × volume) 내림차순 + symbol ASC
+            - "market_cap_desc":    today market_cap 내림차순 + symbol ASC
+                                    (market_cap 컬럼 결손/NaN인 후보는 제외 —
+                                    look-ahead bias 안전 + 결정론)
+            - "random":             rng.random() 키 + symbol ASC
+                                    (sorted 입력 → rng 결정론)
+
+        look-ahead bias 차단 (CLAUDE.md):
+            - 모든 점수는 today row의 컬럼만 사용 (close, adj_volume, market_cap).
+            - 다음 거래일 가격/거래량 절대 참조 금지.
+            - 13.8.3 명세의 "20일 평균 거래대금"은 본 step에서 도입하지 않고
+              today close × adj_volume 단일 봉 점수로 시작 (후속 step에서 사전
+              계산 컬럼으로 교체 가능 — 정렬 키만 바뀌면 됨).
+
+        본 메서드는 candidates 리스트가 비어 있어도 안전 (그대로 반환).
+        """
+        method = self.config.priority_method
+
+        if method == "none":
+            # 020 동작 보존 — 입력이 이미 symbol ASC.
+            return candidates
+
+        if method == "trading_value_desc":
+            # today의 close × adj_volume 내림차순 + symbol ASC.
+            # 결손 row는 _collect_entry_candidates에서 이미 제거되어 도달 불가.
+            return sorted(
+                candidates,
+                key=lambda c: (
+                    -float(c[1]["adj_close"]) * float(c[1]["adj_volume"]),
+                    c[0],
+                ),
+            )
+
+        if method == "market_cap_desc":
+            # market_cap 컬럼이 없거나 NaN인 후보는 제외 (look-ahead 안전 + 결정론).
+            with_cap: list[tuple[str, pd.Series]] = []
+            for symbol, row in candidates:
+                if "market_cap" not in row.index:
+                    continue
+                cap = row["market_cap"]
+                if pd.isna(cap):
+                    continue
+                with_cap.append((symbol, row))
+            return sorted(
+                with_cap,
+                key=lambda c: (-float(c[1]["market_cap"]), c[0]),
+            )
+
+        if method == "random":
+            # rng는 __init__에서 random_seed로 초기화. None이면 config가 이미
+            # __post_init__에서 ValueError를 냈으므로 도달 불가지만 방어적 가드.
+            if self._rng is None:
+                raise RuntimeError(
+                    "priority_method='random'인데 RNG가 초기화되지 않았습니다. "
+                    "config.random_seed를 명시하세요."
+                )
+            # 결정론 핵심: 입력을 먼저 symbol ASC로 정렬한 뒤 rng 키를 부여.
+            # candidates는 이미 symbol ASC로 들어오지만, sorted를 한 번 더 강제해
+            # 호출자 변경/upstream 변경에도 결정론을 보장한다.
+            sorted_input = sorted(candidates, key=lambda c: c[0])
+            # 각 후보별로 rng.random() 키 추출 → 그 순서대로 정렬.
+            # rng를 한 번에 한 후보씩 호출해 호출 횟수 = 후보 수 (재현 가능).
+            keyed = [(self._rng.random(), symbol, row) for symbol, row in sorted_input]
+            keyed.sort(key=lambda t: (t[0], t[1]))  # tie-breaker: symbol ASC
+            return [(symbol, row) for _, symbol, row in keyed]
+
+        # __post_init__에서 화이트리스트로 거부되므로 도달 불가 (방어).
+        raise ValueError(f"지원하지 않는 priority_method: {method!r}")
 
     # === 헬퍼 ===
 
