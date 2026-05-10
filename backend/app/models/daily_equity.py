@@ -10,7 +10,7 @@ from datetime import date as date_type
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, UniqueConstraint
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, UniqueConstraint  # noqa: F401
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -34,13 +34,13 @@ class DailyEquity(Base):
     )
 
     date: Mapped[date_type] = mapped_column(Date, nullable=False)
-    cash: Mapped[float] = mapped_column(Float, nullable=False)
-    stock_value: Mapped[float] = mapped_column(Float, nullable=False)
-    total_equity: Mapped[float] = mapped_column(Float, nullable=False)
+    cash: Mapped[int] = mapped_column(Integer, nullable=False)         # KRW 정수 §14
+    stock_value: Mapped[int] = mapped_column(Integer, nullable=False)  # KRW 정수 §14
+    total_equity: Mapped[int] = mapped_column(Integer, nullable=False) # KRW 정수 §14
 
-    daily_return: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    cumulative_return: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    drawdown: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    daily_return: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)    # 비율 float
+    cumulative_return: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)  # 비율
+    drawdown: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)          # 비율
     positions_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

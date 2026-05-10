@@ -619,7 +619,7 @@ def build_chart_data_from_db(
     equity_rows = (
         session.query(DailyEquity)
         .filter_by(run_id=run.id)
-        .order_by(DailyEquity.date.asc())
+        .order_by(DailyEquity.date.asc(), DailyEquity.id.asc())
         .all()
     )
     equity_curve = [
@@ -702,7 +702,7 @@ def build_chart_data_synthetic_fallback(
     equity_rows = (
         session.query(DailyEquity)
         .filter_by(run_id=run.id)
-        .order_by(DailyEquity.date.asc())
+        .order_by(DailyEquity.date.asc(), DailyEquity.id.asc())
         .all()
     )
     equity_curve = [

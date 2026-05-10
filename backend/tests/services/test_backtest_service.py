@@ -273,25 +273,24 @@ def test_trade_executions_persist_fee_and_tax_with_costs(db_session, user, strat
     assert buys and sells
 
     for buy in buys:
-        # BUY: tax 0 강제 (ExecutionResult), fee = gross * fee_rate
+        # BUY: tax 0 강제 (ExecutionResult), fee = round_krw(gross * fee_rate)
+        # 정확성 정책 §14: 금액은 KRW 정수. 반올림 후 1원 이내 오차 허용.
         assert buy.tax == 0.0
         expected_fee = buy.gross_amount * fee_rate
-        assert buy.fee == pytest.approx(expected_fee, rel=1e-9)
-        # net_amount = gross + fee
-        assert buy.net_amount == pytest.approx(buy.gross_amount + buy.fee, rel=1e-9)
-        # gross = price * quantity (체결가 기준)
-        assert buy.gross_amount == pytest.approx(buy.price * buy.quantity, rel=1e-9)
+        assert buy.fee == pytest.approx(expected_fee, abs=1)  # 반올림 1원 허용
+        # net_amount = gross + fee (정수 합산이라 정확히 일치해야 함)
+        assert buy.net_amount == buy.gross_amount + buy.fee
+        # gross = round_krw(price * quantity) — 정수이므로 정확히 일치
+        assert buy.gross_amount == buy.price * buy.quantity
 
     for sell in sells:
         assert sell.tax > 0.0  # 시계열 적용 결과
         expected_tax = sell.gross_amount * tax_rate
         expected_fee = sell.gross_amount * fee_rate
-        assert sell.tax == pytest.approx(expected_tax, rel=1e-9)
-        assert sell.fee == pytest.approx(expected_fee, rel=1e-9)
-        # net = gross - fee - tax
-        assert sell.net_amount == pytest.approx(
-            sell.gross_amount - sell.fee - sell.tax, rel=1e-9
-        )
+        assert sell.tax == pytest.approx(expected_tax, abs=1)   # 반올림 1원 허용
+        assert sell.fee == pytest.approx(expected_fee, abs=1)   # 반올림 1원 허용
+        # net = gross - fee - tax (정수 합산이라 정확히 일치해야 함)
+        assert sell.net_amount == sell.gross_amount - sell.fee - sell.tax
 
 
 def test_daily_equity_persists_returns(db_session, user, strategy):

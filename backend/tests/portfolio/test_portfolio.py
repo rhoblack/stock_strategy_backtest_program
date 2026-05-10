@@ -387,10 +387,12 @@ def test_sell_with_execution_result_records_fee_tax_breakdown():
     log = p.trade_logs[-1]
     assert log["execution_type"] == "SELL"
     assert log["side"] == "sell"
-    assert log["gross_amount"] == pytest.approx(110_000)
-    assert log["fee"] == pytest.approx(110_000 * 0.00015)
-    assert log["tax"] == pytest.approx(110_000 * 0.0018)
-    assert log["net_amount"] == pytest.approx(110_000 - 110_000 * 0.00015 - 110_000 * 0.0018)
+    # 정확성 정책 §14: 금액은 KRW 정수 (round-half-up 반올림)
+    # gross = 110_000 (정확), fee = round_krw(16.5) = 17, tax = round_krw(198.0) = 198
+    assert log["gross_amount"] == 110_000
+    assert log["fee"] == 17   # 110_000 * 0.00015 = 16.5 → 반올림 17
+    assert log["tax"] == 198  # 110_000 * 0.0018 = 198.0
+    assert log["net_amount"] == 110_000 - 17 - 198  # = 109_785
 
 
 def test_realized_profit_uses_net_amount_when_execution_passed():

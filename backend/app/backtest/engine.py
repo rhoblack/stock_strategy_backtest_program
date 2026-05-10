@@ -250,7 +250,7 @@ class BacktestEngine:
             initial_cash=self.portfolio.initial_cash,
         )
 
-        peak_equity = self.portfolio.initial_cash
+        peak_equity: int = self.portfolio.initial_cash
 
         for today in trading_dates:
             if today < self.config.start_date or today > self.config.end_date:
@@ -1211,11 +1211,11 @@ class BacktestEngine:
         )
 
     def _record_daily_equity(
-        self, result: BacktestResult, on_date, peak_equity: float
+        self, result: BacktestResult, on_date, peak_equity: int
     ) -> None:
-        cash = self.portfolio.cash
-        stock_value = self.portfolio.total_stock_value()
-        total = cash + stock_value
+        cash: int = self.portfolio.cash
+        stock_value: int = self.portfolio.total_stock_value()
+        total: int = cash + stock_value
         drawdown = 0.0
         if peak_equity > 0:
             drawdown = (total - peak_equity) / peak_equity * 100

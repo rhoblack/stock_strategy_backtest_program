@@ -57,14 +57,14 @@ def export_trades_csv(session: Session, run: BacktestRun) -> str:
     tgs = (
         session.query(TradeGroup)
         .filter_by(run_id=run.id)
-        .order_by(TradeGroup.entry_date)
+        .order_by(TradeGroup.entry_date.asc(), TradeGroup.id.asc())
         .all()
     )
     for tg in tgs:
         execs = (
             session.query(TradeExecution)
             .filter_by(trade_group_id=tg.id)
-            .order_by(TradeExecution.execution_date)
+            .order_by(TradeExecution.execution_date.asc(), TradeExecution.id.asc())
             .all()
         )
         last_sell = next(
@@ -96,7 +96,7 @@ def export_daily_equity_csv(session: Session, run: BacktestRun) -> str:
     rows = (
         session.query(DailyEquity)
         .filter_by(run_id=run.id)
-        .order_by(DailyEquity.date)
+        .order_by(DailyEquity.date.asc(), DailyEquity.id.asc())
         .all()
     )
     return _to_csv(
@@ -119,7 +119,7 @@ def export_cash_events_csv(session: Session, run: BacktestRun) -> str:
     rows = (
         session.query(CashEvent)
         .filter_by(run_id=run.id)
-        .order_by(CashEvent.date)
+        .order_by(CashEvent.date.asc(), CashEvent.id.asc())
         .all()
     )
     return _to_csv(

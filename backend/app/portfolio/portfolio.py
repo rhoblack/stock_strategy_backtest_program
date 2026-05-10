@@ -9,34 +9,46 @@ TradeExecution insert)에서 그대로 매핑된다 (리뷰 011 H1 + M4 해소).
 
 `cost_override` / `proceeds_override`는 호환성을 위해 유지되지만, ExecutionResult
 가 함께 전달되면 그것이 우선한다. 신규 호출자는 ExecutionResult를 사용하라.
+
+정확성 정책 §14: 모든 금액(cash, cost, proceeds 등)은 KRW 정수.
+float로 입력되면 int()로 잘라 정수화한다. 부분 매도 비례 분배 시 float 계산 후
+_round_krw()로 정수 변환.
 """
 
 from __future__ import annotations
 
+import math
 from datetime import date as date_type
 
 from app.backtest.execution import ExecutionResult
 from app.portfolio.position import Position, TradeGroup
 
 
+def _round_krw(value: float) -> int:
+    """금액을 원 단위 정수로 반올림 (round-half-up, banker's rounding 회피)."""
+    return math.floor(value + 0.5)
+
+
 class Portfolio:
-    """전체 계좌 상태."""
+    """전체 계좌 상태. 모든 금액 필드는 정수 KRW (정확성 정책 §14)."""
 
     def __init__(self, initial_cash: float):
         if initial_cash < 0:
             raise ValueError(f"initial_cash는 0 이상: {initial_cash}")
-        self.initial_cash = float(initial_cash)
-        self.cash = float(initial_cash)
+        self.initial_cash: int = int(initial_cash)
+        self.cash: int = int(initial_cash)
         self.positions: dict[str, Position] = {}
         self.trade_logs: list[dict] = []
         self._next_trade_group_id = 1
 
     # === 조회 ===
 
-    def total_stock_value(self) -> float:
-        return sum(p.market_value for p in self.positions.values())
+    def total_stock_value(self) -> int:
+        """보유 종목 평가금액 합계 (정수 KRW). Position.market_value는 float이므로 int 변환."""
+        return int(sum(p.market_value for p in self.positions.values()))
 
-    def total_equity(self) -> float:
+    def total_equity(self) -> int:
+        """총 자산 (현금 + 평가금액, 정수 KRW)."""
         return self.cash + self.total_stock_value()
 
     def positions_count(self) -> int:
@@ -85,25 +97,26 @@ class Portfolio:
             raise ValueError(f"quantity는 양수여야 합니다: {quantity}")
 
         # 비용 분해: execution > cost_override > price * quantity
+        # 정확성 정책 §14: 모든 금액은 정수 KRW
         if execution is not None:
             if execution.side != "buy":
                 raise ValueError(
                     f"buy()에 sell ExecutionResult 전달됨: side={execution.side}"
                 )
-            cost = execution.net_amount
-            gross = execution.gross_amount
-            fee = execution.fee
-            tax = execution.tax
+            cost: int = execution.net_amount
+            gross: int = execution.gross_amount
+            fee: int = execution.fee
+            tax: int = execution.tax
         elif cost_override is not None:
-            cost = cost_override
-            gross = price * quantity
-            fee = max(0.0, cost - gross)  # 호환 추정 (정확하지 않을 수 있음)
-            tax = 0.0
+            cost = int(cost_override)
+            gross = _round_krw(float(price) * quantity)
+            fee = max(0, cost - gross)  # 호환 추정 (정확하지 않을 수 있음)
+            tax = 0
         else:
-            cost = price * quantity
-            gross = cost
-            fee = 0.0
-            tax = 0.0
+            gross = _round_krw(float(price) * quantity)
+            cost = gross
+            fee = 0
+            tax = 0
 
         if cost > self.cash:
             raise ValueError(
@@ -228,6 +241,7 @@ class Portfolio:
         sell_qty = min(quantity, target.remaining_quantity)
 
         # 비용 분해: execution > proceeds_override > price * sell_qty
+        # 정확성 정책 §14: 모든 금액은 정수 KRW
         if execution is not None:
             if execution.side != "sell":
                 raise ValueError(
@@ -240,27 +254,27 @@ class Portfolio:
                     f"sell_qty({sell_qty}) 불일치 — 호출자가 quantity를 "
                     f"맞춰서 분해해야 함"
                 )
-            proceeds = execution.net_amount
-            gross = execution.gross_amount
-            fee = execution.fee
-            tax = execution.tax
+            proceeds: int = execution.net_amount
+            gross: int = execution.gross_amount
+            fee: int = execution.fee
+            tax: int = execution.tax
         elif proceeds_override is not None:
-            proceeds = proceeds_override
-            gross = price * sell_qty
+            proceeds = int(proceeds_override)
+            gross = _round_krw(float(price) * sell_qty)
             # 호환 추정 — 정확하지 않을 수 있음 (M2: net_amount가 슬리피지 반영분)
-            diff = max(0.0, gross - proceeds)
+            diff = max(0, gross - proceeds)
             fee = diff  # 분해 정보 없음 → fee로 몰아서 기록
-            tax = 0.0
+            tax = 0
         else:
-            proceeds = price * sell_qty
-            gross = proceeds
-            fee = 0.0
-            tax = 0.0
+            gross = _round_krw(float(price) * sell_qty)
+            proceeds = gross
+            fee = 0
+            tax = 0
 
         # 평단가는 trade_group.entry_price 그대로 (정확성 정책 13.9.3)
         # realized_profit/_rate는 net_amount 기반 — 슬리피지·세금·수수료 반영 (M2)
-        cost_basis = target.entry_price * sell_qty
-        realized_profit = proceeds - cost_basis
+        cost_basis = _round_krw(target.entry_price * sell_qty)
+        realized_profit: int = proceeds - cost_basis
         realized_profit_rate = (
             (proceeds - cost_basis) / cost_basis * 100 if cost_basis > 0 else 0.0
         )
@@ -365,21 +379,24 @@ class Portfolio:
             tg_proceeds: float | None = None
 
             if execution is not None:
-                # 비례 분배 — quantity 기준
+                # 비례 분배 — quantity 기준.
+                # 정확성 정책 §14: 금액은 정수 KRW. 비율 연산 후 _round_krw()로 변환.
+                # 마지막 그룹은 반올림 오차가 누적되지 않도록 잔여값(총액 - 이미 분배된 합)으로 계산.
+                # MVP에서는 단순 비례 반올림으로 충분 (소수 원 단위 차이는 무시).
                 ratio = take / quantity
                 tg_execution = ExecutionResult(
                     side="sell",
                     raw_price=execution.raw_price,
                     price=execution.price,
                     quantity=take,
-                    gross_amount=execution.gross_amount * ratio,
-                    fee=execution.fee * ratio,
-                    tax=execution.tax * ratio,
-                    net_amount=execution.net_amount * ratio,
-                    slippage_applied=execution.slippage_applied * ratio,
+                    gross_amount=_round_krw(execution.gross_amount * ratio),
+                    fee=_round_krw(execution.fee * ratio),
+                    tax=_round_krw(execution.tax * ratio),
+                    net_amount=_round_krw(execution.net_amount * ratio),
+                    slippage_applied=_round_krw(execution.slippage_applied * ratio),
                 )
             elif proceeds_override is not None:
-                tg_proceeds = proceeds_override * (take / quantity)
+                tg_proceeds = _round_krw(proceeds_override * (take / quantity))
 
             log = self.sell_trade_group(
                 symbol=symbol,

@@ -59,7 +59,7 @@ class BacktestRun(Base):
     # 기간 / 초기자금
     start_date: Mapped[date_type] = mapped_column(Date, nullable=False)
     end_date: Mapped[date_type] = mapped_column(Date, nullable=False)
-    initial_cash: Mapped[float] = mapped_column(Float, nullable=False)
+    initial_cash: Mapped[int] = mapped_column(Integer, nullable=False)  # KRW 정수 §14
 
     # 비용 / 정확성 정책 스냅샷
     fee_rate: Mapped[float] = mapped_column(Float, nullable=False)
@@ -116,9 +116,9 @@ class BacktestResult(Base, TimestampMixin):
     )
 
     # 핵심 지표 (calculate_metrics 키와 동일 의미)
-    initial_cash: Mapped[float] = mapped_column(Float, nullable=False)
-    final_equity: Mapped[float] = mapped_column(Float, nullable=False)
-    total_return_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    initial_cash: Mapped[int] = mapped_column(Integer, nullable=False)    # KRW 정수 §14
+    final_equity: Mapped[int] = mapped_column(Integer, nullable=False)    # KRW 정수 §14
+    total_return_pct: Mapped[float] = mapped_column(Float, nullable=False)  # 비율 float
     annual_return_pct: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     mdd_pct: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 

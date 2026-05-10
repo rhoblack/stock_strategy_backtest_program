@@ -12,12 +12,16 @@ from datetime import date as date_type
 
 @dataclass
 class DailyEquity:
-    """일별 자산 스냅샷 (07번 9절 daily_equity와 매핑)."""
+    """일별 자산 스냅샷 (07번 9절 daily_equity와 매핑).
+
+    정확성 정책 §14: cash / stock_value / total_equity는 KRW 정수.
+    drawdown은 비율(%)이므로 float 유지.
+    """
 
     date: date_type
-    cash: float
-    stock_value: float
-    total_equity: float
+    cash: int
+    stock_value: int
+    total_equity: int
     drawdown: float = 0.0  # 누적 최고점 대비 -%
     positions_count: int = 0
 
@@ -39,14 +43,17 @@ class BacktestResult:
           "detail": dict[str, Any],         # 사유별 추가 정보 (cumulative cost 등)
         }
     DB 영속화는 후속 step (event_log DB 모델 + alembic + service 매핑).
+
+    정확성 정책 §14: final_cash / final_equity / initial_cash는 KRW 정수.
+    total_return_pct는 비율이므로 float 유지.
     """
 
     daily_equity: list[DailyEquity] = field(default_factory=list)
     trade_executions: list[dict] = field(default_factory=list)
     event_log: list[dict] = field(default_factory=list)
-    final_cash: float = 0.0
-    final_equity: float = 0.0
-    initial_cash: float = 0.0
+    final_cash: int = 0
+    final_equity: int = 0
+    initial_cash: int = 0
 
     @property
     def total_return_pct(self) -> float:

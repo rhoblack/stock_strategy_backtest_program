@@ -127,7 +127,7 @@ def list_trades(
     rows = (
         session.query(TradeGroup)
         .filter_by(run_id=run_id)
-        .order_by(TradeGroup.entry_date)
+        .order_by(TradeGroup.entry_date.asc(), TradeGroup.id.asc())
         .all()
     )
     items = []
@@ -135,7 +135,7 @@ def list_trades(
         execs = (
             session.query(TradeExecution)
             .filter_by(trade_group_id=tg.id)
-            .order_by(TradeExecution.execution_date)
+            .order_by(TradeExecution.execution_date.asc(), TradeExecution.id.asc())
             .all()
         )
         items.append(
@@ -269,7 +269,7 @@ def list_daily_equity(
     rows = (
         session.query(DailyEquity)
         .filter_by(run_id=run_id)
-        .order_by(DailyEquity.date)
+        .order_by(DailyEquity.date.asc(), DailyEquity.id.asc())
         .all()
     )
     return {
@@ -298,7 +298,7 @@ def list_cash_events(
     rows = (
         session.query(CashEvent)
         .filter_by(run_id=run_id)
-        .order_by(CashEvent.date)
+        .order_by(CashEvent.date.asc(), CashEvent.id.asc())
         .all()
     )
     return {

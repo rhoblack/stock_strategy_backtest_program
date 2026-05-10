@@ -151,7 +151,7 @@ def list_strategies(
     stmt = select(Strategy).where(Strategy.user_id == user_id)
     if not include_deleted:
         stmt = stmt.where(Strategy.deleted_at.is_(None))
-    stmt = stmt.order_by(Strategy.updated_at.desc())
+    stmt = stmt.order_by(Strategy.updated_at.desc(), Strategy.id.desc())
     return list(session.scalars(stmt).all())
 
 
@@ -194,7 +194,7 @@ def list_strategy_versions(
     stmt = (
         select(StrategyVersion)
         .where(StrategyVersion.strategy_id == strategy_id)
-        .order_by(StrategyVersion.version)
+        .order_by(StrategyVersion.version.asc(), StrategyVersion.id.asc())
     )
     return list(session.scalars(stmt).all())
 

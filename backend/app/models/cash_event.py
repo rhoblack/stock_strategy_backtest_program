@@ -29,24 +29,24 @@ class CashEvent(Base):
     date: Mapped[date_type] = mapped_column(Date, nullable=False, index=True)
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)  # cash_shortage / partial_sell / buy_skipped_cash_shortage
 
-    cash_before: Mapped[float] = mapped_column(Float, nullable=False)
-    required_cash: Mapped[float | None] = mapped_column(Float, nullable=True)
-    cash_after: Mapped[float] = mapped_column(Float, nullable=False)
+    cash_before: Mapped[int] = mapped_column(Integer, nullable=False)         # KRW 정수 §14
+    required_cash: Mapped[int | None] = mapped_column(Integer, nullable=True) # KRW 정수 §14
+    cash_after: Mapped[int] = mapped_column(Integer, nullable=False)           # KRW 정수 §14
 
     action: Mapped[str | None] = mapped_column(String(50), nullable=True)  # partial_sell
     symbol: Mapped[str | None] = mapped_column(String(20), nullable=True)
     sell_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    sell_amount: Mapped[float | None] = mapped_column(Float, nullable=True)  # 호환: net_amount과 동일
+    sell_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 호환: net_amount과 동일, KRW 정수
 
     # 강제 매도 비용 분해 (014 step / 리뷰 011 C2 영속화).
     # ExecutionModel을 거친 강제 매도는 fee/tax가 분해되어 들어옴 — 그대로 저장.
     # CashManager에 ExecutionModel이 주입되지 않은 dev/legacy 경로면 fee/tax=0, gross=net.
-    exec_price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    raw_price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    gross_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
-    fee: Mapped[float | None] = mapped_column(Float, nullable=True)
-    tax: Mapped[float | None] = mapped_column(Float, nullable=True)
-    net_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exec_price: Mapped[int | None] = mapped_column(Integer, nullable=True)     # KRW 정수 §14
+    raw_price: Mapped[float | None] = mapped_column(Float, nullable=True)      # 감사용, 소수 허용
+    gross_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)   # KRW 정수 §14
+    fee: Mapped[int | None] = mapped_column(Integer, nullable=True)            # KRW 정수 §14
+    tax: Mapped[int | None] = mapped_column(Integer, nullable=True)            # KRW 정수 §14
+    net_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)     # KRW 정수 §14
 
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 

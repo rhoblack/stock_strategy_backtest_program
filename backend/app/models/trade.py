@@ -28,6 +28,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.enums import TradeExecutionType
 
+# 정확성 정책 §14: 모든 금액(KRW)은 정수. DB 컬럼 타입을 Integer로 유지.
+# entry_price / realized_profit / final_profit 은 소수 원 단위가 없으므로
+# 런타임에서는 int이지만, 외부 호환성을 위해 Float 컬럼을 유지하는 필드도 있다.
+# 비율 필드(realized_profit_rate, final_profit_rate)는 float 유지.
+
 if TYPE_CHECKING:
     from app.models.backtest import BacktestRun
 
@@ -50,15 +55,15 @@ class TradeGroup(Base):
     name: Mapped[str] = mapped_column(String(100), default="", nullable=False)
 
     entry_date: Mapped[date_type] = mapped_column(Date, nullable=False, index=True)
-    entry_price: Mapped[float] = mapped_column(Float, nullable=False)
+    entry_price: Mapped[int] = mapped_column(Integer, nullable=False)  # KRW 정수 §14
     entry_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     remaining_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
     fully_closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    final_profit: Mapped[float | None] = mapped_column(Float, nullable=True)
-    final_profit_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    final_profit: Mapped[int | None] = mapped_column(Integer, nullable=True)   # KRW 정수 §14
+    final_profit_rate: Mapped[float | None] = mapped_column(Float, nullable=True)  # 비율 float
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -105,18 +110,18 @@ class TradeExecution(Base):
         SAEnum(TradeExecutionType, native_enum=False, length=20), nullable=False
     )
 
-    price: Mapped[float] = mapped_column(Float, nullable=False)
+    price: Mapped[int] = mapped_column(Integer, nullable=False)        # KRW 정수 §14
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    # 비용 분해
-    gross_amount: Mapped[float] = mapped_column(Float, nullable=False)
-    fee: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    tax: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    net_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    # 비용 분해 — 모두 KRW 정수 (정확성 정책 §14)
+    gross_amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    fee: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tax: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    net_amount: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # 매도 시만 채움
-    realized_profit: Mapped[float | None] = mapped_column(Float, nullable=True)
-    realized_profit_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    realized_profit: Mapped[int | None] = mapped_column(Integer, nullable=True)   # KRW 정수
+    realized_profit_rate: Mapped[float | None] = mapped_column(Float, nullable=True)  # 비율 float
     exit_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
