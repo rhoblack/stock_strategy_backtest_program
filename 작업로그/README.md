@@ -94,6 +94,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [047-trade-group-exit](./2026-05-11-047-trade-group-exit.md) | 15 | backtest-engine-developer | ✅ | **Phase 15 마지막 step**: trade_group별 익절/손절 (05-l) + trailing_stop 회귀 (04-p) — 1226 PASS |
 | 2026-05-11 | [046-cash-shortage-event](./2026-05-11-046-cash-shortage-event.md) | 15 | backtest-engine-developer | ✅ | buy_skipped_cash_shortage event_log (05-j) + update_peak_price 순서 검증 (05-k) — 1217 PASS |
 | 2026-05-11 | [045-position-sizer](./2026-05-11-045-position-sizer.md) | 15 | backtest-engine-developer | ✅ | PositionSizer fixed_ratio + equal_weight (05-i) — 1210 PASS / 골든 9지표 frozen 유지 |
 | 2026-05-11 | [044-candle-conditions](./2026-05-11-044-candle-conditions.md) | 14 | condition-author | ✅ | **Phase 14 마지막 step**: bullish_candle(양봉+몸통비율) + price_change_pct(당일 등락률 %) — 03-m·n 해소, 1192 PASS |

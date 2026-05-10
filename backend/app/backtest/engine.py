@@ -98,6 +98,53 @@ from app.portfolio.sizer import PositionSizer
 from app.strategy.engine import StrategyEngine
 from app.strategy.registry import condition_registry
 
+
+class _TradeGroupProxy:
+    """TradeGroup을 condition_registry의 position 인터페이스로 노출하는 어댑터 (05-l).
+
+    exit_position 조건 함수(take_profit / stop_loss / max_holding_days)가
+    position.entry_price / position.first_entry_date / position.peak_price를
+    읽도록 명세되어 있으므로, trade_group을 position처럼 보이게 만든다.
+
+    trailing_stop은 position 전체를 청산하므로 본 어댑터 사용 대상 아님
+    (_evaluate_exit_position_per_tg에서 직접 position을 전달).
+
+    Attributes
+    ----------
+    entry_price : float
+        tg.entry_price — 해당 매수 lot의 체결가 (avg가 아님).
+    first_entry_date : date
+        tg.entry_date — 해당 lot의 매수일.
+    peak_price : float
+        Position.peak_price 공유 (trailing_stop이 본 proxy를 사용할 경우 대비
+        방어적으로 노출. 실 경로는 position 직접 전달).
+    quantity : int
+        tg.remaining_quantity.
+    """
+
+    __slots__ = ("_tg", "_position")
+
+    def __init__(self, tg: Any, position: Any) -> None:
+        self._tg = tg
+        self._position = position
+
+    @property
+    def entry_price(self) -> float:
+        return float(self._tg.entry_price)
+
+    @property
+    def first_entry_date(self):
+        return self._tg.entry_date
+
+    @property
+    def peak_price(self) -> float:
+        return float(self._position.peak_price)
+
+    @property
+    def quantity(self) -> int:
+        return self._tg.remaining_quantity
+
+
 # exit_position 평가 우선순위 (정확성 정책 13.3).
 # 갭 다운/업은 본 매핑 이전에 별도 분기로 처리하고, 일중 평가는 다음 순서로 진행한다.
 # tie-breaker는 (priority_rank, type)으로 결정론을 보장한다.
@@ -420,33 +467,34 @@ class BacktestEngine:
     ) -> None:
         """보유 종목 1개에 대해 today의 매도 평가 + peak 갱신.
 
-        흐름은 015 이전의 단일 종목 분기와 동일:
+        흐름:
             1. update_market_price (current_price만)
             2. exit_position 평가 (갭/일중/trailing/max_holding) — today 체결
+               trade_group별 평가 (05-l): take_profit / stop_loss / max_holding_days는
+               각 trade_group의 entry_price / entry_date 기준으로 독립 평가.
+               trailing_stop은 Position.peak_price(공유) 기준 → position 전체 청산.
             3. exit_signal True → next_open 매도 — execution_date = next_date
             4. peak_price 갱신 (그날 high — 다음날부터 trailing 적용)
         """
         # 1. current_price만 갱신 (peak는 평가 후) — 13.3.5 / 13.15 look-ahead 방지
         self.portfolio.update_market_price(symbol, float(row["adj_close"]))
 
-        # 2. exit_position 평가 (정확성 정책 13.3 + 03번 §4 — Registry 라우팅)
-        exit_info = self._evaluate_exit_position(
-            self.portfolio.positions[symbol],
-            row,
-            exit_position_rules,
-            today,
+        # 2. exit_position 평가 (정확성 정책 13.3 + 05-l trade_group별 평가)
+        # _evaluate_exit_position_per_tg는 trade_group별로 청산 결과를 반환한다.
+        # trailing_stop이 position 전체를 청산하는 경우 sold_all=True를 반환한다.
+        sold_all = self._evaluate_exit_position_per_tg(
+            symbol=symbol,
+            row=row,
+            rules=exit_position_rules,
+            today=today,
+            result=result,
         )
-        if exit_info is not None:
-            exit_price, exit_reason, full_qty = exit_info
-            self._process_sell_at_price(
-                symbol=symbol,
-                price=exit_price,
-                quantity=full_qty,
-                on_date=today,
-                reason=exit_reason,
-                result=result,
-            )
-            return  # 청산 후 peak 갱신 불필요
+        if sold_all:
+            return  # 전체 청산 후 peak 갱신 불필요
+
+        # 종목이 이미 전량 청산되었으면 이후 처리 불필요
+        if symbol not in self.portfolio.positions:
+            return  # peak 갱신 불필요
 
         # 3. exit_signal 평가 → 다음 거래일 시가 매도
         next_date = self._next_date_or_none(row)
@@ -919,6 +967,236 @@ class BacktestEngine:
             return []
         return list(section.get("conditions", []))
 
+    def _evaluate_exit_position_per_tg(
+        self,
+        *,
+        symbol: str,
+        row: pd.Series,
+        rules: list[dict],
+        today,
+        result: BacktestResult,
+    ) -> bool:
+        """trade_group별 exit_position 평가 (05-l).
+
+        정확성 정책 13.3 우선순위 + 05-l trade_group별 분리:
+
+            갭 분기 (trade_group별):
+                1. 갭 다운 손절: adj_open <= tg.entry_price * (1 - stop_pct/100)
+                2. 갭 업 익절: adj_open >= tg.entry_price * (1 + take_pct/100)
+                → 해당 trade_group의 remaining_quantity만 시가 체결
+
+            일중 분기 (우선순위 순서로 평가):
+                3. stop_loss   — tg.entry_price 기준 — tg 단위 청산
+                4. take_profit — tg.entry_price 기준 — tg 단위 청산
+                5. trailing_stop — position.peak_price(공유) 기준 — position 전체 청산
+                6. max_holding_days — tg.entry_date 기준 — tg 단위 청산
+
+        결정론:
+            - trade_group 순회는 (entry_date ASC, trade_group_id ASC) 정렬
+            - rule 순회는 (priority_rank, type) 정렬 — dict 순서 미의존
+            - trailing_stop은 position 전체 청산 후 즉시 return True
+
+        Returns
+        -------
+        bool
+            True이면 포지션이 전량 청산됨 (trailing_stop 등). 부분 청산은 False.
+        """
+        if symbol not in self.portfolio.positions:
+            return False
+
+        position = self.portfolio.positions[symbol]
+        adj_open = float(row["adj_open"])
+        adj_close = float(row["adj_close"])
+
+        stop_rule = next((r for r in rules if r["type"] == "stop_loss"), None)
+        take_rule = next((r for r in rules if r["type"] == "take_profit"), None)
+
+        # === 1~2. 갭 분기: trade_group별 entry_price 기준 시가 체결 ===
+        # 결정론: (entry_date, trade_group_id) ASC 정렬 (CLAUDE.md #8)
+        sorted_tgs = sorted(
+            position.trade_groups,
+            key=lambda tg: (tg.entry_date, tg.trade_group_id),
+        )
+        for tg in sorted_tgs:
+            if tg.remaining_quantity <= 0:
+                continue
+            # 갭 다운 손절 우선 (보수적 — 13.3.2)
+            if stop_rule is not None:
+                tg_stop_price = tg.entry_price * (1 - stop_rule["percent"] / 100)
+                if adj_open <= tg_stop_price:
+                    self._sell_trade_group_at_price(
+                        symbol=symbol,
+                        tg_id=tg.trade_group_id,
+                        qty=tg.remaining_quantity,
+                        price=adj_open,
+                        on_date=today,
+                        reason="gap_down_stop_loss",
+                        result=result,
+                    )
+                    # 매도 후 position이 사라졌을 수 있으므로 재확인
+                    if symbol not in self.portfolio.positions:
+                        return True
+                    continue
+            # 갭 업 익절
+            if take_rule is not None:
+                tg_target_price = tg.entry_price * (1 + take_rule["percent"] / 100)
+                if adj_open >= tg_target_price:
+                    self._sell_trade_group_at_price(
+                        symbol=symbol,
+                        tg_id=tg.trade_group_id,
+                        qty=tg.remaining_quantity,
+                        price=adj_open,
+                        on_date=today,
+                        reason="gap_up_take_profit",
+                        result=result,
+                    )
+                    if symbol not in self.portfolio.positions:
+                        return True
+                    continue
+
+        # 갭으로 전량 청산됐으면 종료
+        if symbol not in self.portfolio.positions:
+            return True
+
+        # === 3~6. 일중 분기: 우선순위 순서로 rule 평가 ===
+        # trailing_stop은 position 단위, 나머지는 trade_group 단위
+        sorted_rules = sorted(
+            rules,
+            key=lambda r: (
+                _EXIT_POSITION_PRIORITY.get(r["type"], 99),
+                r["type"],
+            ),
+        )
+
+        for rule in sorted_rules:
+            rule_type = rule["type"]
+            if rule_type not in _EXIT_POSITION_PRIORITY:
+                continue
+
+            # trailing_stop: Position 단위 평가 (peak_price 공유)
+            if rule_type == "trailing_stop":
+                position = self.portfolio.positions[symbol]
+                triggered, reason = condition_registry.evaluate_position(
+                    rule_type,
+                    position=position,
+                    market_row=row,
+                    condition=rule,
+                )
+                if triggered:
+                    trailing_exit_price = position.peak_price * (1 - rule["percent"] / 100)
+                    full_qty = position.quantity
+                    self._process_sell_at_price(
+                        symbol=symbol,
+                        price=trailing_exit_price,
+                        quantity=full_qty,
+                        on_date=today,
+                        reason=reason or rule_type,
+                        result=result,
+                    )
+                    return True
+                continue
+
+            # stop_loss / take_profit / max_holding_days: trade_group 단위 평가
+            if symbol not in self.portfolio.positions:
+                return True
+
+            position = self.portfolio.positions[symbol]
+            # 결정론: (entry_date, trade_group_id) ASC
+            sorted_tgs_intraday = sorted(
+                position.trade_groups,
+                key=lambda tg: (tg.entry_date, tg.trade_group_id),
+            )
+            for tg in sorted_tgs_intraday:
+                if tg.remaining_quantity <= 0:
+                    continue
+                # trade_group을 position처럼 보이는 어댑터로 평가
+                # (condition 함수가 position.entry_price / position.first_entry_date 읽음)
+                tg_proxy = _TradeGroupProxy(tg=tg, position=position)
+                triggered, reason = condition_registry.evaluate_position(
+                    rule_type,
+                    position=tg_proxy,
+                    market_row=row,
+                    condition=rule,
+                )
+                if not triggered:
+                    continue
+
+                exit_price = self._compute_exit_price_for_tg(
+                    rule_type=rule_type,
+                    rule=rule,
+                    tg=tg,
+                    adj_close=adj_close,
+                )
+                self._sell_trade_group_at_price(
+                    symbol=symbol,
+                    tg_id=tg.trade_group_id,
+                    qty=tg.remaining_quantity,
+                    price=exit_price,
+                    on_date=today,
+                    reason=reason or rule_type,
+                    result=result,
+                )
+                if symbol not in self.portfolio.positions:
+                    return True
+
+        return symbol not in self.portfolio.positions
+
+    def _sell_trade_group_at_price(
+        self,
+        *,
+        symbol: str,
+        tg_id: int,
+        qty: int,
+        price: float,
+        on_date,
+        reason: str,
+        result: BacktestResult,
+    ) -> None:
+        """단일 trade_group을 슬리피지/세금 처리 후 매도 (05-l).
+
+        ExecutionResult를 계산해 portfolio.sell_trade_group에 전달.
+        """
+        exec_price = self.execution_model.apply_slippage_and_tick(
+            price, side="sell", market=self.config.market
+        )
+        execution = self.execution_model.calculate_sell_proceeds(
+            exec_price, qty, on_date, raw_price=price
+        )
+        self.portfolio.sell_trade_group(
+            symbol=symbol,
+            trade_group_id=tg_id,
+            price=exec_price,
+            quantity=qty,
+            on_date=on_date,
+            reason=reason,
+            execution=execution,
+        )
+
+    def _compute_exit_price_for_tg(
+        self,
+        *,
+        rule_type: str,
+        rule: dict,
+        tg: Any,
+        adj_close: float,
+    ) -> float:
+        """trade_group 단위 exit_position 체결가 계산 (05-l).
+
+        - stop_loss        : tg.entry_price * (1 - percent/100)
+        - take_profit      : tg.entry_price * (1 + percent/100)
+        - max_holding_days : adj_close (종가 청산)
+        trailing_stop은 position 단위로 처리하므로 본 메서드 호출 대상 아님.
+        """
+        if rule_type == "stop_loss":
+            return tg.entry_price * (1 - rule["percent"] / 100)
+        if rule_type == "take_profit":
+            return tg.entry_price * (1 + rule["percent"] / 100)
+        if rule_type == "max_holding_days":
+            return adj_close
+        raise ValueError(f"체결가 계산이 정의되지 않은 rule_type: {rule_type}")
+
+    # === 하위 호환 — 기존 단일 반환 형태 유지 (테스트/외부 호출자용) ===
+
     def _evaluate_exit_position(
         self,
         position: Any,
@@ -942,6 +1220,9 @@ class BacktestEngine:
               우선순위 정렬 후 첫 트리거를 사용 (03번 §4 + CLAUDE.md #2).
             - 동일 봉 stop+take 동시 도달 시 stop이 먼저 평가되어 보수적으로 처리됨.
             - 결정론: 정렬 키는 (priority, type) — dict 순회 순서 미의존.
+
+        NOTE: 이 메서드는 하위 호환 목적으로 유지됩니다. 주 실행 경로는
+        _evaluate_exit_position_per_tg가 담당합니다.
         """
         adj_open = float(row["adj_open"])
         adj_close = float(row["adj_close"])
