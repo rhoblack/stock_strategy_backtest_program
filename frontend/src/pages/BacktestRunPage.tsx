@@ -2,6 +2,10 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useStrategies } from "../api/strategies";
 import { useCreateBacktest } from "../api/backtests";
+import UniverseSelector, {
+  DEFAULT_UNIVERSE_CONFIG,
+  type UniverseConfig,
+} from "../features/universe-selector/UniverseSelector";
 
 /**
  * 백테스트 실행 화면 — 전략 선택 + 설정 입력 + 실행 → 결과 페이지로 redirect.
@@ -28,21 +32,35 @@ export default function BacktestRunPage() {
   const [syntheticSeed, setSyntheticSeed] = useState(42);
   const [syntheticN, setSyntheticN] = useState(90);
   const [positionSize, setPositionSize] = useState(5_000_000);
+  // 033 / 11-h: UniverseSelector config — 019 백엔드 활용.
+  // dev 모드는 합성 데이터 사용 (universe_config.symbol="GOLDEN") → 토글로 전환.
+  const [useSynthetic, setUseSynthetic] = useState(true);
+  const [universeConfig, setUniverseConfig] = useState<UniverseConfig>(
+    DEFAULT_UNIVERSE_CONFIG,
+  );
 
   const canRun = strategyId !== "" && !createMutation.isPending;
 
   const onRun = () => {
     if (!canRun) return;
-    createMutation.mutate(
-      {
-        strategy_id: Number(strategyId),
-        run_name: runName,
-        universe_config: {
+    // dev 모드 (합성)와 UniverseSelector(019) 분기.
+    const universePayload: Record<string, unknown> = useSynthetic
+      ? {
           symbol: "GOLDEN",
           position_size_amount: positionSize,
           synthetic_seed: syntheticSeed,
           synthetic_n: syntheticN,
-        },
+        }
+      : {
+          position_size_amount: positionSize,
+          ...universeConfigToPayload(universeConfig),
+        };
+
+    createMutation.mutate(
+      {
+        strategy_id: Number(strategyId),
+        run_name: runName,
+        universe_config: universePayload,
         start_date: startDate,
         end_date: endDate,
         initial_cash: initialCash,
@@ -146,25 +164,41 @@ export default function BacktestRunPage() {
           />
         </Field>
 
-        <fieldset
-          style={{ border: "1px solid #e5e7eb", padding: 12, borderRadius: 6 }}
-        >
-          <legend style={{ fontSize: 12, color: "#6b7280" }}>합성 데이터 (dev)</legend>
-          <Field label="seed">
-            <input
-              type="number"
-              value={syntheticSeed}
-              onChange={(e) => setSyntheticSeed(Number(e.target.value))}
-            />
-          </Field>
-          <Field label="일수 N">
-            <input
-              type="number"
-              value={syntheticN}
-              onChange={(e) => setSyntheticN(Number(e.target.value))}
-            />
-          </Field>
-        </fieldset>
+        <Field label="유니버스 모드">
+          <select
+            aria-label="유니버스 모드"
+            data-testid="universe-mode"
+            value={useSynthetic ? "synthetic" : "real"}
+            onChange={(e) => setUseSynthetic(e.target.value === "synthetic")}
+          >
+            <option value="synthetic">합성 데이터 (dev)</option>
+            <option value="real">실제 시장 (UniverseSelector)</option>
+          </select>
+        </Field>
+
+        {useSynthetic ? (
+          <fieldset
+            style={{ border: "1px solid #e5e7eb", padding: 12, borderRadius: 6 }}
+          >
+            <legend style={{ fontSize: 12, color: "#6b7280" }}>합성 데이터 (dev)</legend>
+            <Field label="seed">
+              <input
+                type="number"
+                value={syntheticSeed}
+                onChange={(e) => setSyntheticSeed(Number(e.target.value))}
+              />
+            </Field>
+            <Field label="일수 N">
+              <input
+                type="number"
+                value={syntheticN}
+                onChange={(e) => setSyntheticN(Number(e.target.value))}
+              />
+            </Field>
+          </fieldset>
+        ) : (
+          <UniverseSelector value={universeConfig} onChange={setUniverseConfig} />
+        )}
 
         <button
           type="submit"
@@ -196,4 +230,37 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   );
+}
+
+/**
+ * UniverseConfig → 백엔드 universe_config payload.
+ * - null/빈값은 키 자체를 생략 (백엔드 default 사용).
+ * - MANUAL은 symbols 리스트만 전달.
+ */
+function universeConfigToPayload(cfg: UniverseConfig): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    market: cfg.market,
+    selection_method: cfg.selection_method,
+    exclude_etf: cfg.exclude_etf,
+    exclude_etn: cfg.exclude_etn,
+    exclude_spac: cfg.exclude_spac,
+    exclude_preferred: cfg.exclude_preferred,
+    exclude_managed: cfg.exclude_managed,
+    exclude_halted: cfg.exclude_halted,
+    avg_trading_value_window_days: cfg.avg_trading_value_window_days,
+  };
+  if (cfg.min_market_cap !== null) out.min_market_cap = cfg.min_market_cap;
+  if (cfg.min_avg_trading_value !== null)
+    out.min_avg_trading_value = cfg.min_avg_trading_value;
+  if (
+    (cfg.selection_method === "MARKET_CAP_TOP_N" ||
+      cfg.selection_method === "LIQUIDITY_TOP_N") &&
+    cfg.top_n !== null
+  ) {
+    out.top_n = cfg.top_n;
+  }
+  if (cfg.selection_method === "MANUAL" && cfg.symbols && cfg.symbols.length > 0) {
+    out.symbols = cfg.symbols;
+  }
+  return out;
 }

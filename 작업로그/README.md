@@ -91,6 +91,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [033-table-universe-compare](./2026-05-10-033-table-universe-compare.md) | 12 | frontend-developer | ✅ | **08-m + 11-f·g·h 해소 / Phase 12 마지막 step**: TanStack Table v8(거래 탭 정렬/필터/페이징) + 거래 클릭 차트 이동(setVisibleRange) + UniverseSelector UI(019 백엔드 활용 + MANUAL fallback) + StrategyComparePage 골격 + components/layout·ui·hooks·utils 정합화 + 신규 vitest 31건 (전체 162 PASS) — **75% 돌파** 🎉, test-engineer 검증 대기 |
 | 2026-05-10 | [032-result-page-tabs-and-charts](./2026-05-10-032-result-page-tabs-and-charts.md) | 12 | frontend-developer | ✅ | **08-f·g·h·i·j·k 해소 (6 항목)**: BacktestResultPage 6 탭(요약/거래/자산/월별/리스크/자금) + 5 차트(Drawdown/Cash/Positions/Volume/Benchmark) + SymbolSelector(chart-data symbol query 활용) + 신규 vitest 20건 (전체 131 PASS) — 74% |
 | 2026-05-10 | [031-chart-data-from-daily-prices](./2026-05-10-031-chart-data-from-daily-prices.md) | 12 | backend-api-engineer | ✅ | **08-l + 10-l 해소 (H2/외부 4.8)**: chart-data DB 전환(daily_prices + trade_executions + daily_equity) + ChartDataQuery 5종(symbol/start_date/end_date/use_adjusted/downsample) + APP_ENV dev fallback + 신규 14건 (전체 839 PASS) — 71% |
 | 2026-05-10 | [030-strategy-header-and-templates](./2026-05-10-030-strategy-header-and-templates.md) | 12 | frontend-developer | ✅ | **01-j + 01-k 해소**: StrategyHeader(복사/JSON 보기/백테스트 실행) + 4 템플릿(빈/골든크로스/RSI/모멘텀) + APPLY_TEMPLATE reducer + useBuilderMode(초보/전문 토글 + localStorage) + 신규 vitest 34건 (전체 111 PASS) — **01 카테고리 100% 완료** ✅, **70% 돌파** 🎉 |

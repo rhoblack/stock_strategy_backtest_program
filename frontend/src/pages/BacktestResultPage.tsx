@@ -7,7 +7,9 @@ import {
   useDailyEquity,
 } from "../api/backtests";
 import { useChartData } from "../api/chartData";
-import CandleTradeChart from "../features/backtest-result/components/CandleTradeChart";
+import CandleTradeChart, {
+  type VisibleRange,
+} from "../features/backtest-result/components/CandleTradeChart";
 import EquityCurveChart from "../features/backtest-result/components/EquityCurveChart";
 import ResultTabs, {
   RESULT_TABS,
@@ -16,6 +18,9 @@ import ResultTabs, {
 import SymbolSelector, {
   type SymbolOption,
 } from "../features/backtest-result/components/SymbolSelector";
+import TradesTable, {
+  type TradeRowClickInfo,
+} from "../features/backtest-result/components/TradesTable";
 import DrawdownChart from "../components/charts/DrawdownChart";
 import CashChart from "../components/charts/CashChart";
 import PositionsCountChart from "../components/charts/PositionsCountChart";
@@ -46,6 +51,21 @@ export default function BacktestResultPage() {
 
   const [activeTab, setActiveTab] = useState<ResultTabKey>("summary");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  // 거래 클릭 → 봉차트 visibleRange (08-m / 033).
+  const [tradeRange, setTradeRange] = useState<VisibleRange | null>(null);
+
+  // 거래 행 클릭 → 종목 변경 + 요약 탭 + 차트 시간 범위 zoom
+  const handleTradeRowClick = (info: TradeRowClickInfo) => {
+    setSelectedSymbol(info.tradeGroup.symbol);
+    setActiveTab("summary");
+    setTradeRange({ from: info.entryDate, to: info.exitDate });
+  };
+
+  // 종목을 사용자가 직접 변경하면 trade range를 해제 (전체 봉 보기로 복귀).
+  const handleSymbolChange = (symbol: string | null) => {
+    setSelectedSymbol(symbol);
+    setTradeRange(null);
+  };
 
   // trades에서 unique symbols 추출 (드롭다운용). 결정론: symbol ASC.
   const symbolOptions = useMemo<SymbolOption[]>(() => {
@@ -115,14 +135,15 @@ export default function BacktestResultPage() {
           chartData={chartData}
           symbolOptions={symbolOptions}
           selectedSymbol={selectedSymbol}
-          onSymbolChange={setSelectedSymbol}
+          onSymbolChange={handleSymbolChange}
+          visibleRange={tradeRange}
           runId={id}
         />
       )}
 
       {/* === 거래 탭 === */}
       {isCompleted && activeTab === "trades" && (
-        <TradesSection trades={tradesWrap} />
+        <TradesSection trades={tradesWrap} onRowClick={handleTradeRowClick} />
       )}
 
       {/* === 자산 탭 === */}
@@ -165,6 +186,7 @@ function SummarySection({
   symbolOptions,
   selectedSymbol,
   onSymbolChange,
+  visibleRange,
   runId,
 }: {
   summary: NonNullable<ReturnType<typeof useBacktestSummary>["data"]>["summary"] | undefined;
@@ -172,6 +194,7 @@ function SummarySection({
   symbolOptions: SymbolOption[];
   selectedSymbol: string | null;
   onSymbolChange: (s: string | null) => void;
+  visibleRange: VisibleRange | null;
   runId: number | null;
 }) {
   return (
@@ -231,6 +254,7 @@ function SummarySection({
           <CandleTradeChart
             candles={chartData.candles}
             markers={chartData.markers}
+            visibleRange={visibleRange}
           />
         ) : (
           <p style={{ fontSize: 12, color: "#6b7280" }}>봉차트 데이터가 없습니다.</p>
@@ -242,8 +266,10 @@ function SummarySection({
 
 function TradesSection({
   trades,
+  onRowClick,
 }: {
   trades: { items: ReturnType<typeof useBacktestTrades>["data"] extends infer T ? T extends { items: infer U } ? U : never : never; total_count: number } | undefined;
+  onRowClick: (info: TradeRowClickInfo) => void;
 }) {
   if (!trades || trades.items.length === 0) {
     return <p style={{ fontSize: 13, color: "#6b7280" }}>거래 내역이 없습니다.</p>;
@@ -251,50 +277,10 @@ function TradesSection({
   return (
     <section aria-label="거래 내역">
       <h2 style={{ fontSize: 15, fontWeight: 600 }}>거래 내역</h2>
-      <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-        TanStack Table 기반 정렬/필터/페이지네이션은 step 033에서 추가됩니다.
+      <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, marginBottom: 8 }}>
+        행을 클릭하면 요약 탭의 봉차트가 해당 거래 구간으로 이동합니다.
       </p>
-      <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ background: "#f9fafb" }}>
-            <th style={th}>종목</th>
-            <th style={th}>매수일</th>
-            <th style={th}>매수가</th>
-            <th style={th}>수량</th>
-            <th style={th}>청산일</th>
-            <th style={th}>실현 손익</th>
-            <th style={th}>수익률</th>
-            <th style={th}>매도 사유</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.items.map((tg) => {
-            const lastSell = tg.executions
-              .filter((e) => e.execution_type !== "BUY")
-              .at(-1);
-            return (
-              <tr key={tg.trade_group_id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                <td style={td}>{tg.symbol}</td>
-                <td style={td}>{tg.entry_date}</td>
-                <td style={tdNum}>{Math.round(tg.entry_price).toLocaleString()}</td>
-                <td style={tdNum}>{tg.entry_quantity}</td>
-                <td style={td}>{lastSell?.execution_date ?? "보유 중"}</td>
-                <td style={tdNum}>
-                  {tg.final_profit !== null
-                    ? Math.round(tg.final_profit).toLocaleString()
-                    : "—"}
-                </td>
-                <td style={tdNum}>
-                  {tg.final_profit_rate !== null
-                    ? `${tg.final_profit_rate.toFixed(2)}%`
-                    : "—"}
-                </td>
-                <td style={td}>{lastSell?.exit_reason ?? "—"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <TradesTable items={trades.items} onRowClick={onRowClick} />
     </section>
   );
 }

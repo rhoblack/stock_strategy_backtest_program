@@ -13,15 +13,26 @@ import type { CandleBar, ChartMarker } from "../../../api/chartData";
 /**
  * 봉차트 + 매수/매도 마커 (설계서 08번 7~8절).
  * 설계 원칙: 마커만, 수익률 라벨 X, 마우스 오버 툴팁은 lightweight-charts 기본.
+ *
+ * visibleRange (033 / 08-m): 거래 클릭 시 해당 entry_date~exit_date로 차트 줌.
+ *   - lightweight-charts timeScale().setVisibleRange({ from, to }) 호출
+ *   - exit_date가 없으면 (보유 중) entry_date에서 마지막 봉까지 표시
  */
+export type VisibleRange = {
+  from: string; // YYYY-MM-DD
+  to: string | null; // YYYY-MM-DD or null (보유 중)
+};
+
 export default function CandleTradeChart({
   candles,
   markers,
   height = 360,
+  visibleRange,
 }: {
   candles: CandleBar[];
   markers: ChartMarker[];
   height?: number;
+  visibleRange?: VisibleRange | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -94,6 +105,26 @@ export default function CandleTradeChart({
     });
     series.setMarkers(sm);
   }, [candles, markers]);
+
+  // 033 / 08-m: visibleRange 변경 시 차트 zoom.
+  // candles 갱신 직후에 setVisibleRange를 호출해야 함.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || candles.length === 0) return;
+    if (!visibleRange) {
+      chart.timeScale().fitContent();
+      return;
+    }
+    const lastCandle = candles[candles.length - 1].time;
+    const from = visibleRange.from as Time;
+    const to = (visibleRange.to ?? lastCandle) as Time;
+    try {
+      chart.timeScale().setVisibleRange({ from, to });
+    } catch {
+      // lightweight-charts가 매칭 실패 시 throw하는 케이스 방지 — 무시 후 fitContent.
+      chart.timeScale().fitContent();
+    }
+  }, [candles, visibleRange]);
 
   return (
     <div

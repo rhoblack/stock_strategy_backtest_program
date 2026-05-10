@@ -11,19 +11,35 @@ export default function StrategyListPage() {
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 920 }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h1 style={{ fontSize: 18, fontWeight: 600 }}>주식 전략 연구소</h1>
-        <Link
-          to="/strategies/new"
-          style={{
-            padding: "6px 12px",
-            background: "#2563eb",
-            color: "white",
-            borderRadius: 4,
-            textDecoration: "none",
-            fontSize: 14,
-          }}
-        >
-          ＋ 새 전략 만들기
-        </Link>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link
+            to="/strategies/compare"
+            style={{
+              padding: "6px 12px",
+              background: "white",
+              color: "#1f2937",
+              border: "1px solid #d1d5db",
+              borderRadius: 4,
+              textDecoration: "none",
+              fontSize: 14,
+            }}
+          >
+            전략 비교
+          </Link>
+          <Link
+            to="/strategies/new"
+            style={{
+              padding: "6px 12px",
+              background: "#2563eb",
+              color: "white",
+              borderRadius: 4,
+              textDecoration: "none",
+              fontSize: 14,
+            }}
+          >
+            ＋ 새 전략 만들기
+          </Link>
+        </div>
       </header>
 
       <h2 style={{ fontSize: 14, fontWeight: 500, marginTop: 24, color: "#6b7280" }}>
