@@ -55,7 +55,8 @@
 | 12 | UI 확장 (StrategyConfigPanel + StrategyHeader + chart-data DB + 6 탭 5 차트 + TanStack Table + UniverseSelector) — test-engineer ship-go | ✅ 완료 (5 step) |
 | 13 | 정확성 잔존 + Export + 운영 (KRW Decimal / symbol_performance / API 잔존 / 카탈로그 정식화 / alembic 정상화) — test-engineer 🟢 ship-go | ✅ 완료 (7 step) |
 | 14 | 조건 추가 9종 (avg_trading_value/macd_cross/new_high_breakout/bullish_candle 등 13→21종) — test-engineer 🟢 ship-go | ✅ 완료 (4 step) |
-| 15 | PositionSizer 확장 + buy_skipped_cash_shortage event + trade_group 단위 익절/손절 | 🔄 진행 중 (1/3) |
+| 15 | PositionSizer 확장 + buy_skipped_cash_shortage event + trade_group 단위 익절/손절 — test-engineer 🟢 ship-go | ✅ 완료 (3 step) |
+| 16 | 데이터 파이프라인 완성 + 시장데이터 API (HistoricalBackfillJob / DailyUpdateJob / PykrxProvider / 종목검색 API) | ⬜ 미시작 |
 
 **현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 **Critical 5/5 모두 해소** + 외부 4.7 일괄 — 신뢰성 기반 정합화 완료. 다음 단계는 시장데이터/복수종목 트랙)
 
@@ -279,6 +280,16 @@ Phase 13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" �
 - ✅ test-engineer 검증: 1192 PASS / 0 FAIL / ruff All checks passed / 골든 9지표 유지 / §15 look-ahead bias 9종 전부 차단 확인 / **03번 문서 100%** ✅
 
 Phase 14 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
+
+## Phase 15 완료 ✅ (3/3 step + test-engineer 🟢 ship-go)
+
+### 완료 step
+- ✅ 045 PositionSizer fixed_ratio + equal_weight (05-i, 1210 PASS)
+- ✅ 046 buy_skipped_cash_shortage 이벤트 + update_peak_price prev-high 보장 (05-j·k, 1217 PASS)
+- ✅ 047 trade_group별 익절/손절 평가 + trailing_stop 엔진 통합 시나리오 회귀 (05-l·04-p, 1226 PASS)
+- ✅ test-engineer 검증: 1232 PASS / 0 FAIL / ruff All checks passed / 골든 9지표 frozen 유지 / 13.17 acceptance 전 항목 통과 / e2e 6건 신규 / **05번 문서 100%** ✅, **04-p 해소**
+
+Phase 15 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 
 ---
 
