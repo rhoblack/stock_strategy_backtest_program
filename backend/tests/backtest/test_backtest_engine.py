@@ -77,7 +77,9 @@ def _trivial_entry_strategy(
     exit_position_conds = []
     if take_profit is not None:
         exit_position_conds.append({"type": "take_profit", "percent": take_profit, "trigger": "intraday_high"})
-    # stop_loss / max_holding_days는 조건 함수 미등록이라 schema에 직접 명시 (engine이 직접 평가)
+    # stop_loss / max_holding_days / trailing_stop은 010(A1)에서 ConditionRegistry에
+    # `requires_position=True`로 등록됨. 012(C1)에서 BacktestEngine이 Registry를
+    # 단일 진입점으로 사용하도록 라우팅 통일.
     if stop_loss is not None:
         exit_position_conds.append({"type": "stop_loss", "percent": stop_loss})
     if max_holding_days is not None:
@@ -384,3 +386,217 @@ def test_drawdown_negative_after_loss():
 
     final_drawdown = result.daily_equity[-1].drawdown
     assert final_drawdown <= 0
+
+
+# ========================================================================
+# C1) ConditionRegistry 라우팅 통일 — 4종 모두 Registry 경유 검증
+# ========================================================================
+
+
+def _trailing_strategy(percent: float) -> dict:
+    """trailing_stop 단일 exit_position 전략."""
+    return {
+        "entry": {
+            "logic": "AND",
+            "conditions": [{"type": "price_vs_ma", "ma_period": 2, "operator": ">"}],
+        },
+        "exit_position": {
+            "logic": "OR",
+            "conditions": [
+                {"type": "trailing_stop", "percent": percent, "trigger": "intraday_low"}
+            ],
+        },
+    }
+
+
+def test_exit_position_routes_through_condition_registry(monkeypatch):
+    """take_profit / stop_loss / trailing_stop / max_holding_days 4종 모두
+    `condition_registry.evaluate_position`로 경유하는지 spy로 검증.
+
+    정확성 정책 13.3 + 03번 §4 + CLAUDE.md 핵심원칙 #2.
+    """
+    from app.backtest import engine as engine_module
+    from app.strategy.registry import condition_registry as real_registry
+
+    called_types: list[str] = []
+    real_evaluate_position = real_registry.evaluate_position
+
+    def spy_evaluate_position(condition_type, *, position, market_row, condition):
+        called_types.append(condition_type)
+        return real_evaluate_position(
+            condition_type, position=position, market_row=market_row, condition=condition
+        )
+
+    monkeypatch.setattr(
+        engine_module.condition_registry,
+        "evaluate_position",
+        spy_evaluate_position,
+    )
+
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15, 16, 17, 18, 19)]
+    # Day1 entry True → Day2 매수 110.
+    # 이후 가격 단조 횡보로 일중 trigger 없음 → max_holding_days로 청산.
+    df = _make_df(
+        dates,
+        closes=[100, 110, 110, 110, 110, 110, 110, 110],
+        opens=[100, 110, 110, 110, 110, 110, 110, 110],
+        highs=[100, 110, 110, 110, 110, 110, 110, 110],
+        lows=[100, 110, 110, 110, 110, 110, 110, 110],
+    )
+
+    strategy = {
+        "entry": {
+            "logic": "AND",
+            "conditions": [{"type": "price_vs_ma", "ma_period": 2, "operator": ">"}],
+        },
+        "exit_position": {
+            "logic": "OR",
+            "conditions": [
+                {"type": "take_profit", "percent": 5.0, "trigger": "intraday_high"},
+                {"type": "stop_loss", "percent": 3.0, "trigger": "intraday_low"},
+                {"type": "trailing_stop", "percent": 5.0, "trigger": "intraday_low"},
+                {"type": "max_holding_days", "days": 3},
+            ],
+        },
+    }
+    engine = _make_engine(strategy)
+    engine.run(df)
+
+    # 4종 모두 최소 1회 이상 Registry 경유 호출
+    assert "stop_loss" in called_types
+    assert "take_profit" in called_types
+    assert "trailing_stop" in called_types
+    assert "max_holding_days" in called_types
+
+
+def test_exit_position_priority_stop_before_take_via_registry():
+    """동일 봉 stop+take 동시 도달 시 stop 우선 — Registry 라우팅 후에도 보존.
+
+    정확성 정책 13.3.2.
+    """
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15)]
+    df = _make_df(
+        dates,
+        closes=[100, 110, 110, 110],
+        opens=[100, 110, 110, 110],
+        highs=[100, 110, 110, 120],   # 익절선 117.7 도달
+        lows=[100, 110, 110, 100],    # 손절선 106.7 도달
+    )
+    engine = _make_engine(_trivial_entry_strategy(take_profit=7.0, stop_loss=3.0))
+    result = engine.run(df)
+
+    sells = [ex for ex in result.trade_executions if "SELL" in ex["execution_type"]]
+    assert len(sells) == 1
+    assert sells[0]["reason"] == "stop_loss"
+
+
+def test_trailing_stop_triggers_via_registry_after_peak_made_prior_day():
+    """trailing_stop 정상 트리거 — peak는 전일까지의 high만 사용.
+
+    Day0~1: 가격 상승 (entry 신호)
+    Day2: 매수 (110)
+    Day3: high 130 → 평가 시점 peak는 110 (전일까지 high), 트리거 없음.
+          평가 종료 후 peak가 130으로 갱신.
+    Day4: low 100 → peak 130 기준 손절선 = 130*0.95 = 123.5. low 100 ≤ 123.5 → 트리거.
+          체결가 = 123.5
+    """
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15, 16)]
+    df = _make_df(
+        dates,
+        closes=[100, 110, 110, 130, 100],
+        opens=[100, 110, 110, 110, 130],
+        highs=[100, 110, 110, 130, 130],
+        lows=[100, 110, 110, 110, 100],
+    )
+    engine = _make_engine(_trailing_strategy(percent=5.0))
+    result = engine.run(df)
+
+    sells = [ex for ex in result.trade_executions if "SELL" in ex["execution_type"]]
+    assert len(sells) == 1
+    assert sells[0]["reason"] == "trailing_stop"
+    assert sells[0]["price"] == pytest.approx(123.5, abs=0.5)
+
+
+# ========================================================================
+# C5) peak_price prev-high 정합화 — look-ahead bias 방지
+# ========================================================================
+
+
+def test_trailing_stop_does_not_use_today_high_for_peak_lookahead():
+    """trailing_stop 평가 시점에 그날 high가 peak에 반영되면 안 된다.
+
+    잘못된 구현(현재 종가 또는 그날 high를 즉시 peak로 삽입)이라면:
+        Day3에 매수가 110으로 진입 → 같은 봉 high 118로 peak가 즉시 118로 점프 →
+        Day3 low 105 ≤ 118*0.95 = 112.1 → 트리거 (잘못 — 같은 봉 회귀 청산)
+
+    올바른 구현(전일까지의 high만 peak):
+        Day3 매수 시점 peak = 110, 평가 시점에도 110 → low 105 ≤ 110*0.95 = 104.5 = False
+        → 트리거 없음. 같은 봉에서 회귀 청산이 발생하지 않아야 한다.
+
+    정확성 정책 13.3.5 + 13.15.
+    """
+    # 매수 다음날(Day3)에 high가 폭등하면서 low가 동시에 하락하는 시나리오.
+    # 핵심: Day3 같은 봉에서 high를 peak로 즉시 반영하면 잘못된 트리거 발생.
+    # 올바른 동작: Day3 평가 시점 peak=110(전일까지 high), low 108은 110*0.95=104.5 미만 아님 → no trigger.
+    # 잘못된 동작: Day3 평가 시점 peak=120(그날 high), low 108은 120*0.95=114 미만 → 잘못된 trigger.
+    # 이후 Day4부터는 peak=120이 정상 반영되어 평가됨. low를 충분히 높게 둬서
+    # Day4 이후 진짜 trailing_stop이 발동하지 않도록 한다 (테스트 간섭 차단).
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15, 16, 17)]
+    df = _make_df(
+        dates,
+        closes=[100, 110, 110, 120, 120, 120],
+        opens=[100, 110, 110, 110, 120, 120],
+        highs=[100, 110, 110, 120, 120, 120],   # Day3 high 120 (peak 후보)
+        lows=[100, 110, 110, 108, 119, 119],    # Day3 low 108 (= 같은 봉 내 폭락)
+    )
+    engine = _make_engine(_trailing_strategy(percent=5.0))
+    result = engine.run(df)
+
+    # Day3에 trailing_stop이 트리거되면 look-ahead 버그.
+    sells = [ex for ex in result.trade_executions if "SELL" in ex["execution_type"]]
+    trailing_sells_on_day3 = [
+        s for s in sells if s["reason"] == "trailing_stop" and s["date"] == date(2024, 1, 15)
+    ]
+    assert trailing_sells_on_day3 == [], (
+        f"trailing_stop 평가 시점에 그날 high가 peak로 들어감 (look-ahead): {trailing_sells_on_day3}"
+    )
+
+
+def test_peak_updated_after_exit_evaluation_each_day():
+    """exit_position 평가 후 그날 high가 peak에 반영되어 다음날부터 적용된다."""
+    from app.backtest.config import BacktestConfig
+    from app.backtest.engine import BacktestEngine
+    from app.backtest.execution import ExecutionModel
+    from app.portfolio.portfolio import Portfolio
+    from app.strategy.engine import StrategyEngine
+
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15, 16)]
+    df = _make_df(
+        dates,
+        closes=[100, 110, 110, 115, 115],
+        opens=[100, 110, 110, 110, 115],
+        highs=[100, 110, 110, 120, 115],
+        lows=[100, 110, 110, 110, 110],
+    )
+
+    portfolio = Portfolio(initial_cash=1_000_000)
+    engine = BacktestEngine(
+        StrategyEngine(_trivial_entry_strategy()),
+        portfolio,
+        ExecutionModel(fee_rate=0.0, tax_rate=0.0, slippage=0.0, tick_rounding="nearest"),
+        BacktestConfig(
+            symbol=SYMBOL,
+            start_date=date(2024, 1, 1),
+            end_date=date(2030, 12, 31),
+            position_size_amount=500_000,
+            initial_cash=1_000_000,
+        ),
+    )
+    engine.run(df)
+
+    # Day3의 high 120이 평가 후 peak에 반영되어 보존됨
+    pos = portfolio.positions.get(SYMBOL)
+    assert pos is not None
+    assert pos.peak_price == 120, (
+        f"peak가 그날 high(120)로 평가 후 갱신되어야 한다: 실제 {pos.peak_price}"
+    )

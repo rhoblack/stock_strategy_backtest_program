@@ -53,6 +53,16 @@ class Position:
         )
 
     @property
+    def entry_price(self) -> float:
+        """포지션 조건 함수(03번 §14)가 요구하는 진입가 별칭.
+
+        ConditionRegistry에 등록된 take_profit/stop_loss/trailing_stop 함수가
+        `position.entry_price`를 읽도록 명세돼 있으므로, 가중평균 평단가를 그대로
+        노출한다. 부분매도 후에도 entry_price는 갱신되지 않는다(13.9.3).
+        """
+        return self.avg_entry_price
+
+    @property
     def market_value(self) -> float:
         return self.quantity * self.current_price
 

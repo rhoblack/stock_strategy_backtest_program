@@ -243,13 +243,31 @@ class Portfolio:
     # === 평가가 갱신 ===
 
     def update_market_price(self, symbol: str, price: float) -> None:
-        """일봉 종가 등으로 current_price 갱신. peak_price도 함께 갱신."""
+        """current_price만 갱신. peak_price는 건드리지 않는다.
+
+        정확성 정책 13.3.5 + 13.15(look-ahead bias 방지):
+            peak_price는 "전일까지의 high"여야 하므로 평가 시점에는 그날 high가
+            반영돼서는 안 된다. 그날 high 반영은 exit_position 평가가 끝난 뒤
+            `update_peak_price(symbol, today_high)`로 별도로 진행한다.
+        """
         if symbol not in self.positions:
             return
         position = self.positions[symbol]
         position.current_price = price
-        if price > position.peak_price:
-            position.peak_price = price
+
+    def update_peak_price(self, symbol: str, today_high: float) -> None:
+        """exit_position 평가 후 호출되어 그날 high를 peak에 반영한다.
+
+        정확성 정책 13.3.5: trailing_stop의 손절선은 `peak * (1 - pct/100)`.
+        peak는 "전일까지의 high"로만 산정해야 하므로, 그날 high는 평가가 끝난
+        뒤(다음날부터 적용되도록) 갱신한다. 이로써 같은 봉 안에서 high가
+        급등했다가 즉시 trailing이 발동하는 회귀를 방지한다.
+        """
+        if symbol not in self.positions:
+            return
+        position = self.positions[symbol]
+        if today_high > position.peak_price:
+            position.peak_price = today_high
 
     # === 내부 ===
 

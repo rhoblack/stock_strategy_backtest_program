@@ -1,17 +1,21 @@
 """BacktestEngine — 단일 종목 백테스트 오케스트레이터.
 
 설계서 04번 5~6절 + 정확성 정책 13.3 (일중 익절/손절) / 13.4 (갭/거래정지) /
-13.16 (이벤트 우선순위).
+13.16 (이벤트 우선순위) / 13.3.5 + 13.15 (peak_price 전일까지 high) /
+03번 §4 + CLAUDE.md 핵심원칙 #2 (ConditionRegistry 라우팅 통일).
 
 Phase 1 단일 종목 한정. universe / priority / cash_management는 후속 단계.
 
 흐름 (정확성 정책 13.16 우선순위 적용):
     1. 거래정지 (volume=0) → skip
-    2. 보유 중이면 update_market_price + exit_position 평가
-       (갭 우선 → 일중 손절 → 일중 익절 → max_holding_days)
-    3. 보유 중 + exit_signal True → 다음 거래일 시가 매도 (FIFO)
-    4. 미보유 + final_entry_signal True → 다음 거래일 시가 매수
-    5. 일별 자산 기록
+    2. 보유 중이면:
+        a. update_market_price (current_price만 갱신, peak는 미변경)
+        b. exit_position 평가 — 갭 다운/업 분기 후 ConditionRegistry로 라우팅
+           (정렬: stop_loss → take_profit → trailing_stop → max_holding_days)
+        c. exit_signal True → 다음 거래일 시가 매도 (FIFO)
+        d. update_peak_price (그날 high를 peak에 반영, 다음날부터 적용)
+    3. 미보유 + final_entry_signal True → 다음 거래일 시가 매수
+    4. 일별 자산 기록
 """
 
 from __future__ import annotations
@@ -25,6 +29,17 @@ from app.backtest.execution import ExecutionModel
 from app.backtest.result import BacktestResult, DailyEquity
 from app.portfolio.portfolio import Portfolio
 from app.strategy.engine import StrategyEngine
+from app.strategy.registry import condition_registry
+
+# exit_position 평가 우선순위 (정확성 정책 13.3).
+# 갭 다운/업은 본 매핑 이전에 별도 분기로 처리하고, 일중 평가는 다음 순서로 진행한다.
+# tie-breaker는 (priority_rank, type)으로 결정론을 보장한다.
+_EXIT_POSITION_PRIORITY: dict[str, int] = {
+    "stop_loss": 1,        # 13.3.1 + 13.3.2 (동일 봉 동시 도달 시 손절 우선)
+    "take_profit": 2,      # 13.3.1
+    "trailing_stop": 3,    # 13.3.5
+    "max_holding_days": 4,  # 종가 청산은 마지막
+}
 
 
 class BacktestEngine:
@@ -83,9 +98,10 @@ class BacktestEngine:
 
             # 보유 중 처리
             if symbol in self.portfolio.positions:
+                # current_price만 갱신 (peak는 평가 후) — 13.3.5 / 13.15 look-ahead 방지
                 self.portfolio.update_market_price(symbol, float(row["adj_close"]))
 
-                # 1. exit_position 평가 (정확성 정책 13.3)
+                # 1. exit_position 평가 (정확성 정책 13.3 + 03번 §4 — Registry 라우팅)
                 exit_info = self._evaluate_exit_position(
                     self.portfolio.positions[symbol],
                     row,
@@ -104,6 +120,7 @@ class BacktestEngine:
                     )
                     peak_equity = max(peak_equity, self.portfolio.total_equity())
                     self._record_daily_equity(result, today, peak_equity)
+                    # 청산되었으면 peak 갱신 불필요
                     continue
 
                 # 2. exit_signal 평가 → 다음 거래일 시가 매도
@@ -117,7 +134,11 @@ class BacktestEngine:
                         result=result,
                     )
 
-            # 3. 미보유 + final_entry_signal → 다음 시가 매수
+                # 3. 평가 종료 후 그날 high를 peak에 반영 (다음날부터 trailing 적용)
+                if symbol in self.portfolio.positions:
+                    self.portfolio.update_peak_price(symbol, float(row["adj_high"]))
+
+            # 4. 미보유 + final_entry_signal → 다음 시가 매수
             elif bool(row["final_entry_signal"]) and not pd.isna(row.get("next_open")):
                 self._maybe_buy(symbol, row, today, result)
 
@@ -156,57 +177,101 @@ class BacktestEngine:
         """포지션 기반 매도 평가. 반환: (exit_price, exit_reason, quantity).
 
         정확성 정책 13.3 우선순위:
-            1. 갭 다운 손절 (open <= stop_price)
-            2. 갭 업 익절 (open >= target_price)
-            3. 일중 손절 (low <= stop_price) — 동일 봉 동시 도달 시 손절 우선
-            4. 일중 익절 (high >= target_price)
-            5. max_holding_days 도달 → 종가 청산
+            1. 갭 다운 손절 (open <= stop_price)             — 시가 체결
+            2. 갭 업 익절 (open >= target_price)             — 시가 체결
+            3. 일중 손절 (registry stop_loss)                — stop_price 체결
+            4. 일중 익절 (registry take_profit)              — target_price 체결
+            5. trailing_stop (registry trailing_stop)        — peak*(1-pct) 체결
+            6. max_holding_days (registry max_holding_days)  — 종가 청산
+
+        구현:
+            - 갭 분기는 entry_price 기반 임계값 검사로 별도 처리 (별도 reason).
+            - 일중 평가는 ConditionRegistry.evaluate_position 단일 진입점으로
+              우선순위 정렬 후 첫 트리거를 사용 (03번 §4 + CLAUDE.md #2).
+            - 동일 봉 stop+take 동시 도달 시 stop이 먼저 평가되어 보수적으로 처리됨.
+            - 결정론: 정렬 키는 (priority, type) — dict 순회 순서 미의존.
         """
         adj_open = float(row["adj_open"])
-        adj_high = float(row["adj_high"])
-        adj_low = float(row["adj_low"])
         adj_close = float(row["adj_close"])
 
-        entry_price = position.avg_entry_price
+        entry_price = position.entry_price
         full_qty = position.quantity
 
-        stop_pct = next((r["percent"] for r in rules if r["type"] == "stop_loss"), None)
-        take_pct = next((r["percent"] for r in rules if r["type"] == "take_profit"), None)
-        max_holding = next(
-            (r["days"] for r in rules if r["type"] == "max_holding_days"), None
-        )
+        # 1~2. 갭 다운/업 우선 분기 — Registry 외부에서 시가 임계값으로만 판정
+        stop_rule = next((r for r in rules if r["type"] == "stop_loss"), None)
+        take_rule = next((r for r in rules if r["type"] == "take_profit"), None)
 
-        # 1. 갭 다운 손절
-        if stop_pct is not None:
-            stop_price = entry_price * (1 - stop_pct / 100)
+        if stop_rule is not None:
+            stop_price = entry_price * (1 - stop_rule["percent"] / 100)
             if adj_open <= stop_price:
                 return adj_open, "gap_down_stop_loss", full_qty
 
-        # 2. 갭 업 익절
-        if take_pct is not None:
-            target_price = entry_price * (1 + take_pct / 100)
+        if take_rule is not None:
+            target_price = entry_price * (1 + take_rule["percent"] / 100)
             if adj_open >= target_price:
                 return adj_open, "gap_up_take_profit", full_qty
 
-        # 3. 일중 손절 (동시 도달 시 손절 우선)
-        if stop_pct is not None:
-            stop_price = entry_price * (1 - stop_pct / 100)
-            if adj_low <= stop_price:
-                return stop_price, "stop_loss", full_qty
+        # 3~6. ConditionRegistry 라우팅 — 우선순위 + type tie-breaker로 정렬
+        sorted_rules = sorted(
+            rules,
+            key=lambda r: (
+                _EXIT_POSITION_PRIORITY.get(r["type"], 99),
+                r["type"],
+            ),
+        )
 
-        # 4. 일중 익절
-        if take_pct is not None:
-            target_price = entry_price * (1 + take_pct / 100)
-            if adj_high >= target_price:
-                return target_price, "take_profit", full_qty
+        for rule in sorted_rules:
+            rule_type = rule["type"]
+            if rule_type not in _EXIT_POSITION_PRIORITY:
+                # 미지원 타입은 건너뜀 (등록은 됐어도 우선순위 미정의)
+                continue
 
-        # 5. max_holding_days
-        if max_holding is not None:
-            holding_days = (today - position.first_entry_date).days
-            if holding_days >= max_holding:
-                return adj_close, "max_holding_days", full_qty
+            triggered, reason = condition_registry.evaluate_position(
+                rule_type,
+                position=position,
+                market_row=row,
+                condition=rule,
+            )
+            if not triggered:
+                continue
+
+            # 트리거된 룰별 체결가 재계산 (정확성 정책 13.3)
+            exit_price = self._compute_exit_price(
+                rule_type=rule_type,
+                rule=rule,
+                position=position,
+                adj_close=adj_close,
+            )
+            return exit_price, reason or rule_type, full_qty
 
         return None
+
+    def _compute_exit_price(
+        self,
+        *,
+        rule_type: str,
+        rule: dict,
+        position: Any,
+        adj_close: float,
+    ) -> float:
+        """트리거된 exit_position 룰의 체결가 계산 (정확성 정책 13.3).
+
+        - stop_loss     : entry_price * (1 - percent/100)  — 손절선 정확 체결
+        - take_profit   : entry_price * (1 + percent/100)  — 익절선 정확 체결
+        - trailing_stop : peak_price  * (1 - percent/100)  — 트레일링 손절선
+        - max_holding_days : adj_close                     — 종가 청산
+        """
+        entry_price = position.entry_price
+        if rule_type == "stop_loss":
+            return entry_price * (1 - rule["percent"] / 100)
+        if rule_type == "take_profit":
+            return entry_price * (1 + rule["percent"] / 100)
+        if rule_type == "trailing_stop":
+            return position.peak_price * (1 - rule["percent"] / 100)
+        if rule_type == "max_holding_days":
+            return adj_close
+        # 등록되지 않은 우선순위는 위에서 차단되므로 도달 불가
+        raise ValueError(f"체결가 계산이 정의되지 않은 rule_type: {rule_type}")
 
     def _maybe_buy(
         self,

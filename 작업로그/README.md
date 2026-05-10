@@ -48,31 +48,35 @@
 | 5 | 종목 봉차트 + 매수/매도 마커 | ✅ 완료 |
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ✅ 완료 |
 | 7 | CSV/ZIP Export | ✅ 완료 |
+| 8 | 리뷰 011 Critical 후속 (4/5: C1·C3·C4·C5 해소, C2 잔존) | 🔄 진행 (3/5 step) |
 
-**현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️
+**현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 Critical 4건 해소로 신뢰성 기반 일부 보강)
 
 > 위 Phase 1~7 표는 **자체 정의한 step 기준** 완료 표시입니다. **상세설계서 14개 문서 기준으로는 데모 수준**이며 핵심 미구현 다수가 있습니다.
 > 상세 비교는 [`리뷰/2026-05-10-010-외부코드리뷰.md`](../리뷰/2026-05-10-010-외부코드리뷰.md) 참조 (외부 리뷰 + 메인 세션 검증 완료).
 >
-> 주요 미구현/버그:
+> 주요 미구현/버그 (2026-05-10 Wave A·B 후 갱신):
 > - 백테스트가 실데이터 아닌 합성 데이터(synthetic_data)로만 동작 — 시장데이터 계층(`backend/app/market_data/`) 비어 있음
 > - BacktestEngine은 단일 종목 한정 (복수 종목/priority/유니버스 미구현)
 > - DB에 symbols/daily_prices/trading_calendar 등 시장데이터 테이블 없음
-> - fee/tax가 항상 0.0으로 영속화 (`ExecutionResult` 미도입)
+> - **(잔존 C2)** fee/tax가 항상 0.0으로 영속화 (`ExecutionResult` 미도입) — 다음 우선
 > - next_open 체결인데 체결일을 신호일(today)로 기록 (holding_days/CSV 1일 시프트)
-> - 전략 JSON validator 부재 — API 직접 호출 시 schema 검증 누락
-> - API user_id scope 누락 (`routes_strategies.py` get/update/delete)
-> - 등록 조건 5/17개
+> - ~~전략 JSON validator 부재~~ → ✅ **C4 해소** (010-011, 55건 신규 테스트)
+> - ~~API user_id scope 누락~~ → ✅ **C3 해소** (010-011, 16개 라우트 매트릭스 점검)
+> - ~~error envelope 불일치 / X-Request-ID 부재~~ → ✅ **H7 해소** (010-011)
+> - ~~exit_position 라우팅이 ConditionRegistry 우회~~ → ✅ **C1 해소** (010-012, 4종 모두 evaluate_position 경유)
+> - ~~peak_price를 adj_close로 즉시 갱신 (look-ahead)~~ → ✅ **C5 해소** (010-012, prev-high + 평가 후 갱신)
+> - 등록 조건 5 → **8개** (stop_loss / max_holding_days / trailing_stop 추가, 010-010)
 
-**환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. **300/300 통과** + ruff All checks passed. Node v24 + npm 11 사용 가능.
+**환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. **397/397 통과** (baseline 300 → 010-010 +35 → 010-011 +55 → 010-012 +7) + ruff All checks passed. Node v24 + npm 11 사용 가능.
 
-**다음 작업 권고 순서** (위 미구현 항목 해소):
-1. 체결일 정합성 버그 수정 — `engine.py` execution_date 분리
-2. fee/tax 영속화 — `ExecutionResult` dataclass 도입
-3. 전략 JSON validator 도입
-4. 시장데이터 모델 + LocalCsvProvider 스켈레톤
-5. BacktestEngine 복수 종목/priority 리팩터링 (4번 후)
-6. API user_id scope 강제
+**다음 작업 권고 순서** (Wave A·B 이후 잔존 항목):
+1. **(C2 잔존)** ExecutionResult dataclass 도입 — fee/tax 분해 영속화 (cash_manager가 ExecutionModel 우회 문제 동시 해소)
+2. 체결일 정합성 버그 수정 — `engine.py` execution_date 분리 (외부 4.13)
+3. 시장데이터 모델 + LocalCsvProvider 스켈레톤 (외부 CR-002)
+4. BacktestEngine 복수 종목/priority 리팩터링 (3번 후, 외부 CR-003)
+5. chart-data를 daily_prices 기반으로 전환 (외부 4.8 / H2)
+6. 프론트엔드 02번 schema 정합화 (H6 — position_sizing/cash_management/risk_management/execution/priority/metadata GUI)
 
 UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아엎어야 함).
 
@@ -94,6 +98,9 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [012-exit-routing-and-peak-price](./2026-05-10-012-exit-routing-and-peak-price.md) | 8 | backtest-engine-developer | ✅ | **C1+C5 해소**: exit_position 4종 Registry 라우팅 + peak_price prev-high (13.3.5) + 골든 회귀 + 397 PASS |
+| 2026-05-10 | [011-validator-userscope-envelope](./2026-05-10-011-validator-userscope-envelope.md) | 8 | backend-api-engineer | ✅ | **C4+C3+H7 해소**: strategy_json validator + user_id scope 16개 라우트 + 표준 envelope + X-Request-ID + 55건 신규 |
+| 2026-05-10 | [010-exit-position-conditions-registry](./2026-05-10-010-exit-position-conditions-registry.md) | 8 | condition-author | ✅ | **C1 선결**: stop_loss / max_holding_days / trailing_stop Registry 등록 + 35건 신규 (8개 조건 보유) |
 | 2026-05-10 | [009-csv-export](./2026-05-10-009-csv-export.md) | 7 | main | ✅ | **Phase 7 완료 + MVP 완성** ✅: CSV/ZIP Export + 다운로드 버튼 + 8건 |
 | 2026-05-10 | [008-cash-manager](./2026-05-10-008-cash-manager.md) | 6 | main | ✅ | **Phase 6 완료**: CashManager + cash_events 영속화 + 7건 |
 | 2026-05-10 | [007-chart-data](./2026-05-10-007-chart-data.md) | 5 | main | ✅ | **Phase 5 완료**: chart-data API + CandleTradeChart + EquityCurveChart |

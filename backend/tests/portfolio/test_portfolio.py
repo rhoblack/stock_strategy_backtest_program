@@ -261,24 +261,61 @@ def test_sell_symbol_fifo_proceeds_override_distributed_proportionally():
 # === 평가 갱신 ===
 
 
-def test_update_market_price_updates_current_and_peak():
+def test_update_market_price_updates_current_only_not_peak():
+    """정확성 정책 13.3.5 / 13.15: update_market_price는 current_price만 갱신.
+
+    peak_price는 그날 high가 평가 시점에 반영되면 안 되므로(look-ahead 방지)
+    update_peak_price로 별도 호출돼야 한다.
+    """
     p = Portfolio(initial_cash=1_000_000)
     p.buy(symbol="005930", price=10_000, quantity=10, on_date=date(2024, 1, 10))
 
-    p.update_market_price("005930", 12_000)
+    # peak는 buy 시점의 entry_price로 초기화돼 있음
     pos = p.positions["005930"]
-    assert pos.current_price == 12_000
-    assert pos.peak_price == 12_000
+    assert pos.peak_price == 10_000
 
-    p.update_market_price("005930", 11_000)  # 하락
-    assert pos.current_price == 11_000
-    assert pos.peak_price == 12_000  # peak 유지 (전일까지의 high)
+    # update_market_price만 호출 → current_price만 변경, peak는 그대로
+    p.update_market_price("005930", 12_000)
+    assert pos.current_price == 12_000
+    assert pos.peak_price == 10_000  # peak 미변경
+
+    # 다음 날 update_peak_price로 그날 high 반영
+    p.update_peak_price("005930", 13_000)
+    assert pos.peak_price == 13_000
+
+    # 다음 날 high가 더 낮으면 peak 유지
+    p.update_peak_price("005930", 11_000)
+    assert pos.peak_price == 13_000
+
+
+def test_update_peak_price_unknown_symbol_noop():
+    p = Portfolio(initial_cash=1_000_000)
+    # 보유 안 한 종목 → no-op (예외 안 남)
+    p.update_peak_price("XXXX", 100_000)
 
 
 def test_update_market_price_unknown_symbol_noop():
     p = Portfolio(initial_cash=1_000_000)
     # 보유 안 한 종목 → no-op (예외 안 남)
     p.update_market_price("XXXX", 100_000)
+
+
+def test_position_entry_price_alias_returns_avg_entry_price():
+    """포지션 조건 함수가 사용하는 entry_price는 avg_entry_price 별칭."""
+    p = Portfolio(initial_cash=10_000_000)
+    p.buy(symbol="005930", price=10_000, quantity=10, on_date=date(2024, 1, 10))
+    pos = p.positions["005930"]
+    assert pos.entry_price == pos.avg_entry_price == 10_000
+
+    p.buy(
+        symbol="005930",
+        price=12_000,
+        quantity=10,
+        on_date=date(2024, 1, 15),
+        allow_pyramiding=True,
+    )
+    # 가중평균 11,000
+    assert pos.entry_price == pytest.approx(11_000.0)
 
 
 # === 자산 계산 ===
