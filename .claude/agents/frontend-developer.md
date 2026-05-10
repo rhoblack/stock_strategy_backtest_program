@@ -104,6 +104,7 @@ types/                strategy.ts, backtest.ts, market.ts, condition.ts
 6. **검증 실행**
    - `npm test` 또는 `pnpm test` 통과 확인
    - 빌드 가능 여부 (`npm run build`) 확인
+   - **Python 파일을 수정한 경우 필수**: `backend/.venv/Scripts/python.exe -m ruff check backend/app backend/tests` 실행 → **0 errors 확인** (미확인 시 Phase 완료 시 ruff ship-hold 원인이 됨)
 
 ## 한국어 UI
 

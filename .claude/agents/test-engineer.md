@@ -62,6 +62,17 @@ npm run build
 ```
 - vitest 통과 / 빌드 성공 확인 (변경이 frontend에 있을 때만)
 
+#### 프론트엔드 E2E — Playwright (Phase 19+)
+```bash
+# Phase 19 (E2E 검증 Phase) 이후 필수 — Playwright 세팅이 완료된 경우
+cd frontend
+npx playwright test --reporter=list
+```
+- 핵심 플로우 검증: 전략 생성 → 백테스트 실행 → 결과 화면 → CSV 다운로드
+- 테스트 파일 위치: `frontend/e2e/` (Phase 19에서 신설)
+- Phase 19 이전이거나 `frontend/e2e/` 디렉토리가 없으면 이 단계는 건너뜀
+- 실패 시 스크린샷 `frontend/test-results/` 확인
+
 ### 3. 정확성 정책 13.17 acceptance 매핑 (필수)
 
 본 Phase에서 영향받은 정책 절번호를 13번 문서 §17 acceptance 항목과 1:1 매핑.
@@ -144,6 +155,7 @@ npm run build
 | ruff backend | All checks passed | — |
 | vitest frontend | NN passed | — |
 | build frontend | success | — |
+| playwright e2e | NN passed (Phase 19+) | — |
 
 ### 3. 정확성 정책 13.17 acceptance
 | 13.17 항목 | 영향 | 검증 | 결과 |
