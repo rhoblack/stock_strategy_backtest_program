@@ -31,6 +31,11 @@ vi.mock("../api/conditions", () => ({
 
 vi.mock("../api/strategies", () => ({
   useCreateStrategy: vi.fn(),
+  useDuplicateStrategy: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+  })),
 }));
 
 const mockNavigate = vi.fn();
@@ -91,7 +96,7 @@ describe("저장 흐름", () => {
     expect(screen.getByRole("button", { name: "전략 저장" })).not.toBeDisabled();
   });
 
-  it("저장 클릭 → mutate 호출 + redirect", async () => {
+  it("저장 클릭 → mutate 호출 (Wave 12-030부터 자동 redirect 안 함 — 사용자가 백테스트 실행/복사 가능)", async () => {
     renderApp();
     fireEvent.change(screen.getByLabelText("전략 이름"), { target: { value: "내 전략" } });
     fireEvent.click(within(screen.getByLabelText("블록 팔레트")).getByText("가격과 이동평균 비교"));
@@ -104,9 +109,5 @@ describe("저장 흐름", () => {
     const payload = mutate.mock.calls[0][0];
     expect(payload.name).toBe("내 전략");
     expect((payload.strategy_json as Record<string, unknown>).entry).toBeDefined();
-
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith("/strategies");
-    });
   });
 });

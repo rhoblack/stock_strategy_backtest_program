@@ -36,6 +36,22 @@ export async function createStrategy(
   return (await api.post<StrategyOut>("/api/strategies", payload)).data;
 }
 
+/**
+ * 전략 복사. 백엔드 라우트(routes_strategies.py)는 new_name을 query parameter로 받음.
+ */
+export async function duplicateStrategy(
+  strategyId: number,
+  newName: string,
+): Promise<StrategyOut> {
+  return (
+    await api.post<StrategyOut>(
+      `/api/strategies/${strategyId}/duplicate`,
+      undefined,
+      { params: { new_name: newName } },
+    )
+  ).data;
+}
+
 export function useStrategies() {
   return useQuery({ queryKey: ["strategies"], queryFn: fetchStrategies });
 }
@@ -44,6 +60,15 @@ export function useCreateStrategy() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createStrategy,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["strategies"] }),
+  });
+}
+
+export function useDuplicateStrategy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ strategyId, newName }: { strategyId: number; newName: string }) =>
+      duplicateStrategy(strategyId, newName),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["strategies"] }),
   });
 }

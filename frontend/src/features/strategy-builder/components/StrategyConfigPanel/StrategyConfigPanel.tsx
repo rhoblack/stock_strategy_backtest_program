@@ -16,6 +16,10 @@ import {
   type ConfigSectionKey,
 } from "../../state/strategySections";
 import { useStrategyDraft } from "../../state/StrategyDraftContext";
+import {
+  BEGINNER_VISIBLE_CONFIG_SECTIONS,
+  useBuilderMode,
+} from "../../state/useBuilderMode";
 import PositionSizingForm from "./PositionSizingForm";
 import CashManagementForm from "./CashManagementForm";
 import RiskManagementForm from "./RiskManagementForm";
@@ -46,9 +50,17 @@ function useSectionEnabled(): Record<ConfigSectionKey, boolean> {
 }
 
 export default function StrategyConfigPanel() {
-  const [active, setActive] = useState<ConfigSectionKey>("position_sizing");
+  const { isBeginner } = useBuilderMode();
+  const visibleSections: readonly ConfigSectionKey[] = isBeginner
+    ? BEGINNER_VISIBLE_CONFIG_SECTIONS
+    : CONFIG_SECTIONS;
+  const [active, setActive] = useState<ConfigSectionKey>(visibleSections[0]);
   const enabled = useSectionEnabled();
-  const ActiveForm = FORMS[active];
+  // 모드 전환으로 active 탭이 사라지면 첫 가시 탭으로 fallback
+  const safeActive: ConfigSectionKey = visibleSections.includes(active)
+    ? active
+    : visibleSections[0];
+  const ActiveForm = FORMS[safeActive];
 
   return (
     <section
@@ -66,6 +78,7 @@ export default function StrategyConfigPanel() {
         </h2>
         <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 0" }}>
           각 섹션을 활성화해야 백테스트 시 적용됩니다. 비활성 섹션은 백엔드 기본값을 사용합니다.
+          {isBeginner && " (초보자 모드 — 자금 배분만 표시)"}
         </p>
       </header>
 
@@ -74,8 +87,8 @@ export default function StrategyConfigPanel() {
         aria-label="설정 섹션 탭"
         style={{ display: "flex", gap: 4, padding: "8px 8px 0", borderBottom: "1px solid #e5e7eb", flexWrap: "wrap" }}
       >
-        {CONFIG_SECTIONS.map((key) => {
-          const isActive = key === active;
+        {visibleSections.map((key) => {
+          const isActive = key === safeActive;
           return (
             <button
               key={key}
@@ -121,8 +134,8 @@ export default function StrategyConfigPanel() {
 
       <div
         role="tabpanel"
-        id={`config-panel-${active}`}
-        aria-labelledby={`config-tab-${active}`}
+        id={`config-panel-${safeActive}`}
+        aria-labelledby={`config-tab-${safeActive}`}
         style={{ padding: 12 }}
       >
         <ActiveForm />

@@ -3,12 +3,17 @@
  *
  * 02번 §7~§12, §17 + Wave 12-029.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import StrategyConfigPanel from "./StrategyConfigPanel";
 import { StrategyDraftProvider, useStrategyDraft } from "../../state/StrategyDraftContext";
 import { serializeDraft } from "../../utils/serializeDraft";
 import { STRATEGY_SCHEMA_VERSION } from "../../state/strategySections";
+
+beforeEach(() => {
+  // useBuilderMode가 localStorage를 읽으므로 매 테스트마다 expert default로 reset
+  window.localStorage.clear();
+});
 
 function renderPanel() {
   return render(
@@ -50,7 +55,7 @@ describe("StrategyConfigPanel — 탭 전환", () => {
     expect(within(panel).getByText(/체결\/비용 \(execution\)/)).toBeInTheDocument();
   });
 
-  it("6 탭 모두 노출", () => {
+  it("6 탭 모두 노출 (expert 모드 default)", () => {
     renderPanel();
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(6);
@@ -61,6 +66,15 @@ describe("StrategyConfigPanel — 탭 전환", () => {
     expect(labels.some((l) => l?.includes("체결/비용"))).toBe(true);
     expect(labels.some((l) => l?.includes("동시 신호 우선순위"))).toBe(true);
     expect(labels.some((l) => l?.includes("메타데이터"))).toBe(true);
+  });
+
+  it("초보자 모드 — position_sizing 탭만 노출 + 안내 문구", () => {
+    window.localStorage.setItem("stockstrategy.builder_mode", "beginner");
+    renderPanel();
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0].textContent).toContain("자금 배분");
+    expect(screen.getByText(/초보자 모드 — 자금 배분만 표시/)).toBeInTheDocument();
   });
 });
 

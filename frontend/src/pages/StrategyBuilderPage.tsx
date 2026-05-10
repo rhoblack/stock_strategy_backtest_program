@@ -1,9 +1,9 @@
-import { Link, useNavigate } from "react-router-dom";
 import BlockPalette from "../features/strategy-builder/components/BlockPalette";
 import StrategyCanvas from "../features/strategy-builder/components/StrategyCanvas";
 import ConditionEditorPanel from "../features/strategy-builder/components/ConditionEditorPanel";
 import StrategyPreviewPanel from "../features/strategy-builder/components/StrategyPreviewPanel";
 import StrategyValidationPanel from "../features/strategy-builder/components/StrategyValidationPanel";
+import StrategyHeader from "../features/strategy-builder/components/StrategyHeader";
 import {
   StrategyDraftProvider,
   useStrategyDraft,
@@ -11,6 +11,7 @@ import {
 import { hasErrors, validateDraft } from "../features/strategy-builder/utils/validateDraft";
 import { serializeDraft } from "../features/strategy-builder/utils/serializeDraft";
 import { useCreateStrategy } from "../api/strategies";
+import { useState } from "react";
 
 /**
  * 전략 빌더 페이지 — 3열 레이아웃 (설계서 01번 3절).
@@ -25,25 +26,35 @@ export default function StrategyBuilderPage() {
 }
 
 function BuilderShell() {
-  const { draft, dispatch } = useStrategyDraft();
-  const navigate = useNavigate();
+  const { draft } = useStrategyDraft();
   const createMutation = useCreateStrategy();
+
+  // savedStrategyId — 새 전략에서 저장에 성공하면 채워짐 (라우팅 변경 없이 헤더 복사 활성)
+  const [savedStrategyId, setSavedStrategyId] = useState<number | null>(null);
 
   const validation = validateDraft(draft);
   const hasError = hasErrors(validation);
   const canSave = !hasError && draft.name.trim().length > 0 && !createMutation.isPending;
 
-  const onSave = () => {
-    if (!canSave) return;
+  /**
+   * 저장 액션. 성공 시 strategy id를 반환 (StrategyHeader가 백테스트 실행 흐름에서 사용).
+   * 실패 시 null.
+   */
+  const onSave = async (): Promise<number | null> => {
+    if (!canSave) return null;
     const { name, ...sections } = serializeDraft(draft);
-    createMutation.mutate(
-      { name, strategy_json: sections, tags: [] },
-      {
-        onSuccess: () => {
-          navigate("/strategies");
+    return new Promise<number | null>((resolve) => {
+      createMutation.mutate(
+        { name, strategy_json: sections, tags: [] },
+        {
+          onSuccess: (created) => {
+            setSavedStrategyId(created.id);
+            resolve(created.id);
+          },
+          onError: () => resolve(null),
         },
-      },
-    );
+      );
+    });
   };
 
   return (
@@ -55,55 +66,13 @@ function BuilderShell() {
         fontFamily: "sans-serif",
       }}
     >
-      <header
-        style={{
-          padding: "12px 16px",
-          borderBottom: "1px solid #e5e7eb",
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-        }}
-      >
-        <Link
-          to="/strategies"
-          style={{ fontSize: 14, color: "#6b7280", textDecoration: "none" }}
-        >
-          ← 전략 목록
-        </Link>
-        <input
-          aria-label="전략 이름"
-          placeholder="전략 이름 입력"
-          value={draft.name}
-          onChange={(e) => dispatch({ type: "SET_NAME", name: e.target.value })}
-          style={{
-            fontSize: 14,
-            padding: "4px 8px",
-            border: "1px solid #d1d5db",
-            borderRadius: 4,
-            minWidth: 200,
-          }}
-        />
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={!canSave}
-          aria-label="전략 저장"
-          style={{
-            marginLeft: "auto",
-            padding: "6px 12px",
-            border: "1px solid #d1d5db",
-            borderRadius: 4,
-            background: canSave ? "#2563eb" : "white",
-            color: canSave ? "white" : "#9ca3af",
-            cursor: canSave ? "pointer" : "not-allowed",
-          }}
-        >
-          {createMutation.isPending ? "저장 중..." : "저장"}
-        </button>
-        {createMutation.isError && (
-          <span style={{ fontSize: 12, color: "crimson" }}>저장 실패</span>
-        )}
-      </header>
+      <StrategyHeader
+        savedStrategyId={savedStrategyId}
+        canSave={canSave}
+        onSave={onSave}
+        isSaving={createMutation.isPending}
+        saveErrorMessage={createMutation.isError ? "저장 실패" : null}
+      />
 
       <div
         style={{

@@ -213,3 +213,35 @@ describe("draftReducer (6 비조건 섹션 — Wave 12-029)", () => {
     expect(s.metadata.random_seed).toBe("");
   });
 });
+
+describe("draftReducer (APPLY_TEMPLATE — Wave 12-030)", () => {
+  beforeEach(() => _resetIdCounterForTests());
+
+  it("APPLY_TEMPLATE — 임의의 draft로 전체 교체 + selected는 항상 null", () => {
+    let s = emptyDraft("기존 이름");
+    s = draftReducer(s, { type: "ADD_CONDITION", section: "entry", meta: PRICE_VS_MA });
+    s = draftReducer(s, { type: "POSITION_SIZING_SET", patch: { enabled: true, amount: 999 } });
+
+    const tplDraft = emptyDraft("새 템플릿 전략");
+    tplDraft.position_sizing.enabled = true;
+    tplDraft.position_sizing.amount = 1_500_000;
+    tplDraft.execution.enabled = true;
+
+    const next = draftReducer(s, { type: "APPLY_TEMPLATE", draft: tplDraft });
+    expect(next.name).toBe("새 템플릿 전략");
+    expect(next.sections.entry.conditions).toHaveLength(0); // 기존 조건 사라짐
+    expect(next.position_sizing.amount).toBe(1_500_000); // 템플릿 값 적용
+    expect(next.execution.enabled).toBe(true);
+    expect(next.selected).toBeNull(); // 항상 null로 reset
+  });
+
+  it("APPLY_TEMPLATE — RESET과 다르게 빈 default가 아닌 임의 값 적용 가능", () => {
+    const s = emptyDraft();
+    const tplDraft = emptyDraft("골든");
+    tplDraft.priority.enabled = true;
+    tplDraft.priority.method = "market_cap_desc";
+    const next = draftReducer(s, { type: "APPLY_TEMPLATE", draft: tplDraft });
+    expect(next.priority.enabled).toBe(true);
+    expect(next.priority.method).toBe("market_cap_desc");
+  });
+});

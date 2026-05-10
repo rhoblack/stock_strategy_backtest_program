@@ -39,6 +39,8 @@ export type DraftAction =
   | { type: "SELECT"; section: Section; instance_id: string }
   | { type: "CLEAR_SELECTION" }
   | { type: "RESET"; name?: string }
+  // 템플릿 적용 (Wave 12-030) — RESET과 달리 임의의 draft로 전체 교체
+  | { type: "APPLY_TEMPLATE"; draft: StrategyDraft }
   // 6 비조건 섹션 (Wave 12-029)
   | { type: "POSITION_SIZING_SET"; patch: Partial<PositionSizingState> }
   | { type: "CASH_MGMT_SET"; patch: Partial<CashManagementState> }
@@ -181,6 +183,10 @@ export function draftReducer(state: StrategyDraft, action: DraftAction): Strateg
 
     case "RESET":
       return emptyDraft(action.name);
+
+    case "APPLY_TEMPLATE":
+      // 전체 교체. selected는 항상 null (템플릿 적용 후 새로 클릭하도록 유도)
+      return { ...action.draft, selected: null };
 
     // ---------------------------------------------------------------- 6 비조건 섹션
 
