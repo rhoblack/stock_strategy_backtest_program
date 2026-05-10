@@ -49,6 +49,8 @@
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ✅ 완료 |
 | 7 | CSV/ZIP Export | ✅ 완료 |
 | 8 | 리뷰 011 Critical 후속 (Wave A·B·C = 010~014 완료, Critical 5/5 해소) | ✅ 완료 (5 step) |
+| 9 | 정확성 잔존(015·017) + 시장데이터 1단계(016·018·019) — test-engineer ship-go | ✅ 완료 (5 step) |
+| 10 | BacktestEngine 복수 종목 + priority (외부 CR-003) | 🔄 다음 |
 
 **현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 **Critical 5/5 모두 해소** + 외부 4.7 일괄 — 신뢰성 기반 정합화 완료. 다음 단계는 시장데이터/복수종목 트랙)
 
@@ -87,6 +89,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [phase9-test-engineer-verification](./2026-05-10-phase9-test-engineer-verification.md) | 9 | test-engineer | ✅ | **Phase 9 완료 검증 🟢 ship-go**: 통합 회귀 536 PASS / 13.17 acceptance 모두 통과 / 골든 9지표 유지 / e2e 시나리오 5건 신규 |
 | 2026-05-10 | [019-universe-selector](./2026-05-10-019-universe-selector.md) | 9 | market-data-engineer | ✅ | **06-f·g + 13-m 해소 / Phase 9 마지막 step**: UniverseSelector + 06번 §8 공통 필터(8개) + 13.15 look-ahead 차단(시가총액 ≤ as_of_date / 거래대금 평균 < as_of_date) + selection_method 3종 + 35건 신규 / 531 collected — **52% (test-engineer 검증 대기)** |
 | 2026-05-10 | [018-local-csv-provider-and-price-loader](./2026-05-10-018-local-csv-provider-and-price-loader.md) | 9 | market-data-engineer | ✅ | **06-c·d·e 해소**: BaseProvider(ABC) + LocalCsvProvider(CSV ingest) + PriceLoader(BacktestEngine 호환 next_* DataFrame) + 31건 신규 / 497 collected — **50% 돌파** 🎉 |
 | 2026-05-10 | [017-signal-date-persistence](./2026-05-10-017-signal-date-persistence.md) | 9 | backend-api-engineer | ✅ | **07-m 해소**: TradeExecution.signal_date 컬럼 + alembic + service 매핑 + env.py 부수 픽스(silent-skip 정상화) + 466 collected/465 passed (1 fail은 016 자기-소유 head 가드) |
@@ -207,21 +210,21 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 4. ✅ ExecutionResult dataclass + cash_manager의 ExecutionModel 주입 (C2 + H1 + M2 + M4) — 2026-05-10-013 (backtest-engine-developer)
 5. ✅ TradeExecution.fee/tax + DailyEquity.daily/cumulative + cash_events 분해 영속화 + alembic 마이그레이션 (M5 + 외부 4.7) — 2026-05-10-014 (backend-api-engineer)
 
-## Phase 9 step 5/5 완료 — test-engineer 검증 대기
+## Phase 9 완료 ✅ (5/5 step + test-engineer 🟢 ship-go)
 
-### 완료
+### 완료 step
 - ✅ 015 체결일 정합성 (signal_date vs execution_date)
 - ✅ 016 시장데이터 3종 모델 + repositories 스켈레톤
 - ✅ 017 signal_date 영속화 (TradeExecution + alembic + service)
 - ✅ 018 LocalCsvProvider + PriceLoader (016b)
 - ✅ 019 UniverseSelector + 06번 §8 공통 필터 + 13.15 look-ahead 차단
+- ✅ test-engineer 검증: 536 passed / 1 fail(016 head 가드, 알려진 무관) / Phase 1 골든 9지표 유지 / e2e 5건 신규
 
-### 다음 단계 (Phase 9 완료 흐름)
-- ⏭ 다음: **test-engineer 호출 "Phase 9 완료 검증"** — 통합/회귀/13.17 acceptance/골든/시나리오 + ship-readiness
-- ship-go 시: PM "Phase 9 완료" → 진행률 추이 갱신 → git push origin main
-- ship-block 시: 추가 fix step + push 보류
+## Phase 10 다음 진입 — BacktestEngine 복수 종목 + priority
 
-Phase 10~13 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
+⏭ 다음: step 020 — BacktestEngine을 dict[symbol, DataFrame] 입력으로 확장 (backtest-engine-developer, 외부 CR-003)
+
+Phase 10~13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 
 ---
 
