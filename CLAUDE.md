@@ -139,7 +139,12 @@ Phase 7. CSV/ZIP Export
 4. Follow-ups 중 다음 작업 후보로 승격할 항목을 README의 "Phase N 다음 작업 후보"에 옮김
 5. **`로드맵.md` 갱신은 PM 에이전트(`.claude/agents/project-manager.md`)가 담당** — step 완료 시 메인 세션이 PM 에이전트를 호출해 "step NNN 마무리" 지시. PM이 (a) Phase 로드맵의 step ✅, (b) 영향 체크박스 [x], (c) 진행률 표 손계산, (d) 변화 보고를 직접 Edit 도구로 수행. 영향 체크박스 ID는 step 시작 시 PM이 사전 추출해 작업 로그에 기록해 두었음.
 6. **각 step 완료 시**: `git commit` (각 step의 결과물을 단일 커밋)
-7. **Phase 완료 시 (의무)**: `git push origin main` — Phase의 마지막 step commit 직후 실행. push 누락 시 다음 세션이 GitHub에서 동기화 못 하므로 **반드시 자동 실행**.
+7. **Phase 완료 시 (의무, 순서대로)**:
+   1. `test-engineer` 에이전트 호출 (`.claude/agents/test-engineer.md`) — "Phase X 완료 검증". 정량 회귀 + 13.17 acceptance 매핑 + Phase 1 골든 회귀 + (필요 시) 시나리오 통합 테스트 신규 작성 + ship-readiness 결정 (🟢 ship-go / 🟡 ship-hold / 🔴 ship-block)
+   2. **🔴 ship-block이면** 추가 step 분리 + fix 진행, push 금지
+   3. **🟡 ship-hold면** PM과 합의 후 진행 또는 Follow-up step 분리
+   4. **🟢 ship-go이면** PM 에이전트 호출 "Phase X 완료" → PM이 로드맵.md "진행률 추이" 표에 새 행 추가
+   5. `git push origin main` — Phase의 마지막 step commit 직후 실행. push 누락 시 다음 세션이 GitHub에서 동기화 못 하므로 **반드시 자동 실행**.
 
 ### 블록 / 중단 시
 
