@@ -48,9 +48,9 @@
 | 5 | 종목 봉차트 + 매수/매도 마커 | ✅ 완료 |
 | 6 | Portfolio + CashManager (예수금 부족 시 일부 매도) | ✅ 완료 |
 | 7 | CSV/ZIP Export | ✅ 완료 |
-| 8 | 리뷰 011 Critical 후속 (4/5: C1·C3·C4·C5 해소, C2 잔존) | 🔄 진행 (3/5 step) |
+| 8 | 리뷰 011 Critical 후속 (Wave A·B = 010·011·012 완료, C2 잔존) | 🔄 진행 (Critical 4/5) |
 
-**현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 Critical 4건 해소로 신뢰성 기반 일부 보강)
+**현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 Critical 4건 해소로 신뢰성 기반 일부 보강 — C2 ExecutionResult가 다음 작업 1순위)
 
 > 위 Phase 1~7 표는 **자체 정의한 step 기준** 완료 표시입니다. **상세설계서 14개 문서 기준으로는 데모 수준**이며 핵심 미구현 다수가 있습니다.
 > 상세 비교는 [`리뷰/2026-05-10-010-외부코드리뷰.md`](../리뷰/2026-05-10-010-외부코드리뷰.md) 참조 (외부 리뷰 + 메인 세션 검증 완료).
@@ -87,14 +87,6 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 ---
 
 ## 최근 작업 (최신 순)
-
-아직 코딩 작업 로그 없음. 첫 작업이 추가되면 아래에 항목으로 기록합니다.
-
-```text
-| 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
-|---|---|---|---|---|---|
-| 2026-05-09 | 001-... | 1 | condition-author | ✅ | RSI 조건 함수 추가 |
-```
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
@@ -158,7 +150,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 (cash_events는 Phase 6 CashManager 도입 시 추가)
 
-## Phase 3 다음 작업 후보 (GUI 전략 빌더)
+## Phase 3 완료 ✅
 
 1. ✅ FastAPI + GET /api/conditions — 2026-05-09-016
 2. ✅ 프론트엔드 골격 (Vite + React + TS) — 2026-05-09-017
@@ -179,26 +171,39 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 - CandleTradeChart (lightweight-charts) + EquityCurveChart
 - BacktestResultPage에 차트 통합
 
-## Phase 6 다음 작업 후보 (Portfolio + CashManager)
+## Phase 6 완료 ✅
 
-설계서 05번 9~12절:
+설계서 05번 9~12절 적용.
 
-1. ⏭ **다음**: PositionSizer + CashManager 모듈 (이미 구조는 있음)
-2. BacktestEngine에 cash_management 옵션 통합
-3. CashEvent DB 모델 + 영속화
+1. ✅ PositionSizer + CashManager 모듈 — 2026-05-10-008
+2. ✅ BacktestEngine에 cash_management 옵션 통합 — 2026-05-10-008
+3. ✅ CashEvent DB 모델 + 영속화 — 2026-05-10-008
 
-## Phase 7 다음 작업 후보 (CSV/ZIP Export)
+## Phase 7 완료 ✅
 
-설계서 09번:
+설계서 09번 적용.
 
-1. CsvExporter (summary/trades/daily_equity/cash_events)
-2. ZipExporter
-3. /api/backtests/{id}/export/* 엔드포인트
-4. 결과 페이지에 다운로드 버튼
-4. BlockPalette (메타데이터 기반 자동 생성)
-5. ConditionEditorPanel (parameters 메타로 폼 자동)
-6. StrategyPreviewPanel + StrategyValidationPanel
-7. 전략 저장 (POST /api/strategies + 프론트 연동) — Phase 3 마지막 step에서 push
+1. ✅ CsvExporter (summary/trades/daily_equity/cash_events) — 2026-05-10-009
+2. ✅ ZipExporter — 2026-05-10-009
+3. ✅ /api/backtests/{id}/export/* 엔드포인트 — 2026-05-10-009
+4. ✅ 결과 페이지에 다운로드 버튼 — 2026-05-10-009
+
+## Phase 8 진행 ⏳ (리뷰 011 Critical 4/5 해소, C2 잔존)
+
+리뷰 011 §8 의존성·회귀 위험 분석에 따라 Wave A·B로 분할 — A1·A2 병렬 실행 후 B1.
+
+### Wave A·B 완료 (3 step)
+1. ✅ exit_position 조건 3종 Registry 등록 (C1 선결 + H5) — 2026-05-10-010 (condition-author)
+2. ✅ strategy_json validator + user_id scope + 표준 envelope (C4 + C3 + H7) — 2026-05-10-011 (backend-api-engineer)
+3. ✅ exit_position 라우팅 통일 + peak_price prev-high (C1 + C5) — 2026-05-10-012 (backtest-engine-developer)
+
+### 잔존 / 다음 작업 후보
+1. ⏭ **다음**: ExecutionResult dataclass + cash_manager가 ExecutionModel 주입받기 (C2 + H1 + M2 + M4 + M5 일괄) — backtest-engine-developer + backend-api-engineer 협업
+2. 체결일 정합성 버그 수정 — `engine.py` execution_date 분리 (외부 4.13)
+3. 시장데이터 모델 + LocalCsvProvider 스켈레톤 (외부 CR-002) — market-data-engineer
+4. BacktestEngine 복수 종목/priority 리팩터링 (3번 후, 외부 CR-003)
+5. chart-data를 daily_prices 기반으로 전환 (외부 4.8 / H2)
+6. 프론트엔드 02번 schema 정합화 (H6 — 6개 섹션 GUI)
 
 각 단계는 별도 작업 로그 파일을 만들어 진행합니다.
 

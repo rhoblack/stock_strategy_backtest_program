@@ -38,10 +38,15 @@ npm run test:watch   # vitest watch
 ```text
 src/
   api/         axios client + TanStack Query hooks
+  app/         App.tsx, router 등 앱 부트스트랩
   types/       TypeScript 타입 (백엔드 응답 형식)
-  pages/       라우팅 단위 페이지
-  features/    도메인별 컴포넌트 (strategy-builder, backtest-result, ...)
+  pages/       라우팅 단위 페이지 (StrategyListPage / StrategyBuilderPage / BacktestRunPage / BacktestResultPage)
+  features/
+    strategy-builder/   BlockPalette / StrategyCanvas / ConditionEditorPanel / Preview / Validation
+    backtest-result/    SummaryCards / CandleTradeChart / EquityCurveChart / TradeTable / CsvExportPanel
   components/  공통 UI / layout / charts
-  hooks/       범용 hooks
-  utils/       순수 함수
+  main.tsx     엔트리
+  test-setup.ts  vitest 셋업
 ```
+
+설계서 11번에 정의된 `hooks/`, `utils/`, `features/universe-selector/`, `StrategyComparePage` 등은 향후 작업 후보 (외부 리뷰 4.11 / H6 참조).
