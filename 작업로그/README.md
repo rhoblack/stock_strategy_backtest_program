@@ -90,6 +90,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [025-pykrx-collector](./2026-05-10-025-pykrx-collector.md) | 11 | market-data-engineer | ✅ | **14-e·f·g 해소**: PykrxCollector(_fetch_* 격리, lazy import) + retry(1s→5s→30s, jitter 없음) + validators(HARD/SOFT 매핑) + RetryableCollectorError 다중상속 + 51건 신규 / 693 PASS — **60% 돌파** 🎉 |
 | 2026-05-10 | [024-data-pipeline-skeleton](./2026-05-10-024-data-pipeline-skeleton.md) | 11 | market-data-engineer | ✅ | **14-b·c·d 해소 / Phase 11 첫 step**: data_pipeline 패키지 구조 + BaseCollector(3-메서드)/BaseProcessor(단일 process)/BaseJob/Scheduler 레지스트리 + 예외 계층 7종 + 26건 신규 / 642 PASS — 59% |
 | 2026-05-10 | [phase10-test-engineer-verification](./2026-05-10-phase10-test-engineer-verification.md) | 10 | test-engineer | ✅ | **Phase 10 완료 검증 🟢 ship-go**: 통합 회귀 616 PASS / 13.17 모든 항목 통과 / 골든 9지표 유지 / e2e 시나리오 4건 신규 |
 | 2026-05-10 | [023-event-log-and-forced-sell](./2026-05-10-023-event-log-and-forced-sell.md) | 10 | backtest-engine-developer | ✅ | **04-n·o + 13-p·q 해소 / Phase 10 마지막 step**: event_log 8종 사유 + 상한가/하한가 차단(default 보수) + 상장폐지 강제 매도(delisting_dates) + 25건 신규 / 612 PASS — **58% (test-engineer 검증 대기)** |

@@ -32,7 +32,10 @@ packages = ["app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -m 'not network'"
+markers = [
+    "network: 외부 네트워크(예: pykrx KRX 호출)에 접근하는 통합 테스트 — 기본 실행에서 제외",
+]
 
 [tool.ruff]
 line-length = 100
