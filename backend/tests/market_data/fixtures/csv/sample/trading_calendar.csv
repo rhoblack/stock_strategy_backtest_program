@@ -1,0 +1,9 @@
+date,market,is_trading_day,holiday_name
+2024-01-01,KOSPI,false,신정
+2024-01-02,KOSPI,true,
+2024-01-03,KOSPI,true,
+2024-01-04,KOSPI,true,
+2024-01-05,KOSPI,true,
+2024-01-06,KOSPI,false,주말
+2024-01-07,KOSPI,false,주말
+2024-01-08,KOSPI,true,

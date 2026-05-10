@@ -1,0 +1,5 @@
+symbol,name,market,sector,listing_date,delisting_date,is_etf,is_etn,is_spac,is_preferred,is_managed,is_halted
+005930,삼성전자,KOSPI,전기전자,1975-06-11,,0,0,0,0,0,0
+000660,SK하이닉스,KOSPI,전기전자,1996-12-26,,0,0,0,0,0,0
+035720,카카오,KOSPI,서비스업,2017-07-10,,0,0,0,0,0,0
+099999,상장폐지테스트,KOSDAQ,기타,2010-01-04,2023-06-30,0,0,0,0,0,0
