@@ -44,12 +44,16 @@ def test_revision_chain_links_to_prev_head():
     assert new_rev.down_revision == PREV_REVISION
 
 
-def test_new_revision_is_current_head():
-    """본 revision이 head — 후속 마이그레이션이 누적 가능."""
+def test_new_revision_exists_in_chain():
+    """본 revision이 alembic script chain에 존재해야 함.
+
+    NOTE — 후속 step이 새 revision을 추가하면 head가 더 앞으로 이동하지만, 본 revision은
+    체인 안에 그대로 남아있어야 한다. 따라서 'head'가 아니라 'walk_revisions'에 존재 여부만 검증.
+    """
     cfg = _alembic_config("sqlite:///:memory:")
     script = ScriptDirectory.from_config(cfg)
-    heads = script.get_heads()
-    assert NEW_REVISION in heads
+    revisions = {r.revision for r in script.walk_revisions()}
+    assert NEW_REVISION in revisions
 
 
 def test_migration_file_contains_table_ddl():

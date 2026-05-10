@@ -13,10 +13,12 @@ from app.models.corporate_action import (
 from app.models.daily_equity import DailyEquity
 from app.models.daily_price import DailyPrice
 from app.models.enums import BacktestStatus, TradeExecutionType
+from app.models.market_index import MARKET_INDEX_CODES, MarketIndex
 from app.models.strategy import Strategy, StrategyVersion
 from app.models.symbol import Symbol
 from app.models.trade import TradeExecution, TradeGroup
 from app.models.trading_calendar import TradingCalendar
+from app.models.universe_history import UniverseHistory
 from app.models.user import User
 
 __all__ = [
@@ -28,6 +30,8 @@ __all__ = [
     "CorporateAction",
     "DailyEquity",
     "DailyPrice",
+    "MARKET_INDEX_CODES",
+    "MarketIndex",
     "Strategy",
     "StrategyVersion",
     "Symbol",
@@ -35,5 +39,6 @@ __all__ = [
     "TradeExecutionType",
     "TradeGroup",
     "TradingCalendar",
+    "UniverseHistory",
     "User",
 ]

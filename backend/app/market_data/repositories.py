@@ -31,8 +31,10 @@ from app.models.corporate_action import (
     CorporateAction,
 )
 from app.models.daily_price import DailyPrice
+from app.models.market_index import MARKET_INDEX_CODES, MarketIndex
 from app.models.symbol import Symbol
 from app.models.trading_calendar import TradingCalendar
+from app.models.universe_history import UniverseHistory
 
 # ---------------------------------------------------------------------------
 # symbols
@@ -498,4 +500,233 @@ def get_corporate_actions(
         stmt = stmt.where(CorporateAction.event_date >= start_date)
     if end_date is not None:
         stmt = stmt.where(CorporateAction.event_date <= end_date)
+    return list(session.execute(stmt).scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# market_indices (027 추가)
+# ---------------------------------------------------------------------------
+
+
+def upsert_market_index(
+    session: Session,
+    data: Mapping[str, Any],
+) -> MarketIndex:
+    """market_indices 단일 row upsert.
+
+    UniqueConstraint(index_code, date) 위반 시 갱신 (open/high/low/close/volume/change_pct).
+
+    14번 §3-4 정합:
+        - index_code는 MARKET_INDEX_CODES enum (KOSPI / KOSDAQ / KOSPI200 등) 권장.
+          enum 외 값은 ValueError. 새 지수 추가 필요 시 MARKET_INDEX_CODES를 먼저 갱신.
+
+    13.13 / 14.10 정합:
+        - 지수에는 폐지 개념이 없으므로 listing/delisting 처리 불필요.
+        - 결손 봉(거래소 휴장 외 누락)은 호출자가 입력에 포함시키지 말 것 (forward-fill 금지).
+
+    Args:
+        data: dict — 필수 키: index_code / date / close.
+            선택 키: open / high / low / volume / change_pct.
+
+    Returns:
+        등록 또는 갱신된 MarketIndex (flush까지만, commit은 호출자 책임).
+
+    Raises:
+        KeyError: 필수 키 누락.
+        ValueError: 알 수 없는 index_code.
+    """
+    for key in ("index_code", "date", "close"):
+        if key not in data:
+            raise KeyError(f"market_index data missing required key: {key!r}")
+
+    index_code = str(data["index_code"])
+    if index_code not in MARKET_INDEX_CODES:
+        raise ValueError(
+            f"알 수 없는 index_code: {index_code!r}. "
+            f"허용: {MARKET_INDEX_CODES}"
+        )
+
+    existing_stmt = (
+        select(MarketIndex)
+        .where(MarketIndex.index_code == index_code)
+        .where(MarketIndex.date == data["date"])
+    )
+    existing = session.execute(existing_stmt).scalar_one_or_none()
+
+    if existing is None:
+        new = MarketIndex(
+            index_code=index_code,
+            date=data["date"],
+            open=data.get("open"),
+            high=data.get("high"),
+            low=data.get("low"),
+            close=float(data["close"]),
+            volume=data.get("volume"),
+            change_pct=data.get("change_pct"),
+            created_at=_utcnow(),
+        )
+        session.add(new)
+        session.flush()
+        return new
+
+    # 갱신: 들어온 키만 덮어씀
+    if "open" in data:
+        existing.open = data["open"]
+    if "high" in data:
+        existing.high = data["high"]
+    if "low" in data:
+        existing.low = data["low"]
+    existing.close = float(data["close"])
+    if "volume" in data:
+        existing.volume = data["volume"]
+    if "change_pct" in data:
+        existing.change_pct = data["change_pct"]
+    session.flush()
+    return existing
+
+
+def get_market_indices(
+    session: Session,
+    index_code: str,
+    start_date: date_type | None = None,
+    end_date: date_type | None = None,
+) -> list[MarketIndex]:
+    """지수 시계열 조회 — (date ASC) 정렬 (단일 index_code이므로 date만으로 결정론).
+
+    13.12 결정론: 단일 index_code 조회는 (date ASC)만으로 충분. 멀티 index_code 호출자는
+    별도 함수 호출 후 호출자가 합치되 (date ASC, index_code ASC) 추가 정렬.
+
+    Args:
+        index_code: MARKET_INDEX_CODES enum 값 권장.
+        start_date: 포함. None이면 무제한 과거.
+        end_date: 포함. None이면 무제한 미래.
+
+    Returns:
+        MarketIndex 리스트, (date ASC).
+    """
+    stmt = (
+        select(MarketIndex)
+        .where(MarketIndex.index_code == index_code)
+        .order_by(MarketIndex.date.asc())
+    )
+    if start_date is not None:
+        stmt = stmt.where(MarketIndex.date >= start_date)
+    if end_date is not None:
+        stmt = stmt.where(MarketIndex.date <= end_date)
+    return list(session.execute(stmt).scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# universe_history (027 추가)
+# ---------------------------------------------------------------------------
+
+
+def upsert_universe_snapshot(
+    session: Session,
+    data: Mapping[str, Any],
+) -> UniverseHistory:
+    """universe_history 단일 스냅샷 upsert.
+
+    UniqueConstraint(as_of_date, market, selection_method, config_hash) 위반 시
+    갱신 (config_json / symbols_json / run_id).
+
+    07번 §14 / 06번 §14: 019 UniverseSelector.select_with_details 결과를 영속화.
+
+    13.13 / 14.10 정합:
+        - 그 시점에 살아있던 종목 리스트(symbols_json)를 그대로 보존 → 재현 시 생존편향 0.
+    13.15 정합:
+        - universe 선정 시점 정보만 보존 → 미래 데이터 누설 0.
+    13.12 결정론:
+        - symbols_json은 호출자가 symbol ASC로 정렬해 넘길 것 (UniverseSelector 결과는 이미 정렬).
+        - config_hash가 None이면 SQLite NULL UNIQUE 의미상 중복 행이 생길 수 있음 — 가급적 지정.
+
+    Args:
+        data: dict — 필수 키: as_of_date / market / selection_method / config_json / symbols_json.
+            선택 키: config_hash / run_id.
+
+    Returns:
+        등록 또는 갱신된 UniverseHistory (flush까지만, commit은 호출자 책임).
+
+    Raises:
+        KeyError: 필수 키 누락.
+    """
+    required = ("as_of_date", "market", "selection_method", "config_json", "symbols_json")
+    for key in required:
+        if key not in data:
+            raise KeyError(f"universe_snapshot data missing required key: {key!r}")
+
+    config_hash = data.get("config_hash")
+    run_id = data.get("run_id")
+
+    existing_stmt = (
+        select(UniverseHistory)
+        .where(UniverseHistory.as_of_date == data["as_of_date"])
+        .where(UniverseHistory.market == data["market"])
+        .where(UniverseHistory.selection_method == data["selection_method"])
+    )
+    if config_hash is None:
+        existing_stmt = existing_stmt.where(UniverseHistory.config_hash.is_(None))
+    else:
+        existing_stmt = existing_stmt.where(UniverseHistory.config_hash == config_hash)
+    existing = session.execute(existing_stmt).scalar_one_or_none()
+
+    if existing is None:
+        new = UniverseHistory(
+            as_of_date=data["as_of_date"],
+            market=str(data["market"]),
+            selection_method=str(data["selection_method"]),
+            config_json=dict(data["config_json"]),
+            config_hash=config_hash,
+            symbols_json=list(data["symbols_json"]),
+            run_id=run_id,
+            created_at=_utcnow(),
+        )
+        session.add(new)
+        session.flush()
+        return new
+
+    # 갱신: config_json / symbols_json / run_id 덮어씀
+    existing.config_json = dict(data["config_json"])
+    existing.symbols_json = list(data["symbols_json"])
+    if "run_id" in data:
+        existing.run_id = run_id
+    session.flush()
+    return existing
+
+
+def get_universe_snapshot(
+    session: Session,
+    as_of_date: date_type,
+    market: str,
+    selection_method: str | None = None,
+    config_hash: str | None = None,
+) -> list[UniverseHistory]:
+    """universe_history 조회 — (as_of_date DESC, id ASC) 정렬.
+
+    `as_of_date` + `market` 단위로 1개 또는 N개 스냅샷이 있을 수 있다 (selection_method /
+    config_hash가 다르면 별개 row). 호출자가 method/hash로 추가 필터.
+
+    13.12 결정론: 기본 정렬은 (as_of_date DESC) — "최근 스냅샷부터" 조회. 같은 as_of_date에
+    여러 method가 있으면 (id ASC) tie-breaker로 결정론 보장.
+
+    Args:
+        as_of_date: 기준 날짜 (정확히 일치).
+        market: KOSPI / KOSDAQ / KONEX.
+        selection_method: 선택. 지정 시 method 일치만.
+        config_hash: 선택. 지정 시 hash 일치만.
+
+    Returns:
+        UniverseHistory 리스트 — 본 step에서는 (as_of_date DESC, id ASC) 정렬.
+        결과는 0건 이상 가능.
+    """
+    stmt = (
+        select(UniverseHistory)
+        .where(UniverseHistory.as_of_date == as_of_date)
+        .where(UniverseHistory.market == market)
+        .order_by(UniverseHistory.as_of_date.desc(), UniverseHistory.id.asc())
+    )
+    if selection_method is not None:
+        stmt = stmt.where(UniverseHistory.selection_method == selection_method)
+    if config_hash is not None:
+        stmt = stmt.where(UniverseHistory.config_hash == config_hash)
     return list(session.execute(stmt).scalars().all())

@@ -53,6 +53,8 @@ _KNOWN_ALEMBIC_GAPS = {
     "daily_prices",
     "trading_calendar",
     "corporate_actions",
+    "market_indices",
+    "universe_history",
 }
 
 
