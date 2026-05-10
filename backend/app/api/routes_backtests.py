@@ -12,7 +12,7 @@ user_id 스코프 (10번 9절): 모든 단일 자원 엔드포인트가 user_id�
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user_id, get_db_session
@@ -20,6 +20,7 @@ from app.core.exceptions import (
     BacktestNotRunningError,
     BacktestRunNotFoundError,
     InvalidParameterValueError,
+    MarketDataNotFoundError,
 )
 from app.db.session import make_session_factory
 from app.main_state import get_engine
@@ -27,7 +28,12 @@ from app.models.backtest import BacktestRun, BacktestStatus
 from app.models.cash_event import CashEvent
 from app.models.daily_equity import DailyEquity
 from app.models.trade import TradeExecution, TradeGroup
-from app.schemas.backtest import BacktestCreate, BacktestRunOut, BacktestSummaryOut
+from app.schemas.backtest import (
+    BacktestCreate,
+    BacktestRunOut,
+    BacktestSummaryOut,
+    ChartDataQuery,
+)
 from app.services import backtest_service
 
 router = APIRouter(prefix="/api/backtests", tags=["backtests"])
@@ -165,65 +171,92 @@ def get_chart_data(
     run_id: int,
     session: Session = Depends(get_db_session),
     user_id: int = Depends(get_current_user_id),
+    symbol: str | None = Query(default=None),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    use_adjusted: bool = Query(default=True),
+    downsample: int | None = Query(default=None, ge=1),
 ):
-    """단일 종목 백테스트 결과 차트 데이터 (08번 16절).
+    """백테스트 결과 차트 데이터 (08번 §6 / 10번 §4 chart-data).
 
-    dev 모드: synthetic_seed/synthetic_n으로 candles 재생성.
-    Phase 14 PriceLoader 도입 시 daily_prices에서 직접 조회로 교체.
+    데이터 소스 우선순위 (031 step):
+        1) `daily_prices` DB 조회 — 운영/dev 공통, 데이터가 있으면 항상 우선.
+        2) dev 모드 (`APP_ENV ∈ {development, dev, test, testing, ''}`) +
+           daily_prices 비어있음 → synthetic_seed/synthetic_n fallback.
+        3) 운영 모드 (`APP_ENV ∈ {production, prod}`) + daily_prices 비어있음 →
+           404 MARKET_DATA_NOT_FOUND (helpful 메시지).
+
+    응답 키 (frontend `CandleBar` / `ChartMarker` / `EquityPoint` 보존):
+        - `candles[].{time,open,high,low,close,volume}` — frontend는 volume 무시 가능.
+        - `markers[].{time,type,price,quantity,exit_reason}`
+        - `equity_curve[].{time,value,drawdown}`
+        - 신규: `symbol`, `source`, `resolution`, `downsampled`,
+          `downsample_stride`, `date_range`, `use_adjusted`
     """
     run = _get_run_or_raise(session, run_id, user_id=user_id)
 
-    cfg = run.universe_config_json or {}
-    seed = int(cfg.get("synthetic_seed", 42))
-    n = int(cfg.get("synthetic_n", 90))
+    # 쿼리 검증 — pydantic ChartDataQuery로 일괄 통과
+    try:
+        query = ChartDataQuery(
+            symbol=symbol,
+            start_date=start_date,  # type: ignore[arg-type]
+            end_date=end_date,  # type: ignore[arg-type]
+            use_adjusted=use_adjusted,
+            downsample=downsample,
+        )
+    except Exception as exc:  # pydantic ValidationError
+        raise InvalidParameterValueError(
+            "chart-data 쿼리 형식이 올바르지 않습니다.",
+            details=[{"field": "query", "message": str(exc)}],
+        ) from exc
 
-    from app.services.synthetic_data import build_synthetic_series
+    if (
+        query.start_date is not None
+        and query.end_date is not None
+        and query.start_date > query.end_date
+    ):
+        raise InvalidParameterValueError(
+            "start_date는 end_date 이전이어야 합니다.",
+            details=[
+                {
+                    "field": "start_date",
+                    "message": (
+                        f"{query.start_date.isoformat()} > "
+                        f"{query.end_date.isoformat()}"
+                    ),
+                }
+            ],
+        )
 
-    df = build_synthetic_series(seed=seed, n=n, base_date=run.start_date)
-    candles = [
-        {
-            "time": row["date"].isoformat(),
-            "open": float(row["adj_open"]),
-            "high": float(row["adj_high"]),
-            "low": float(row["adj_low"]),
-            "close": float(row["adj_close"]),
-        }
-        for _, row in df.iterrows()
-    ]
-
-    executions = (
-        session.query(TradeExecution)
-        .filter_by(run_id=run_id)
-        .order_by(TradeExecution.execution_date)
-        .all()
+    # 1) daily_prices 우선
+    payload = backtest_service.build_chart_data_from_db(
+        session,
+        run,
+        symbol=query.symbol,
+        start_date=query.start_date,
+        end_date=query.end_date,
+        use_adjusted=query.use_adjusted,
+        downsample=query.downsample,
     )
-    markers = [
-        {
-            "time": ex.execution_date.isoformat(),
-            "type": ex.execution_type.value,
-            "price": ex.price,
-            "quantity": ex.quantity,
-            "exit_reason": ex.exit_reason,
-        }
-        for ex in executions
-    ]
+    if payload is not None:
+        return payload
 
-    equity_rows = (
-        session.query(DailyEquity)
-        .filter_by(run_id=run_id)
-        .order_by(DailyEquity.date)
-        .all()
+    # 2) dev fallback
+    if backtest_service.is_dev_mode():
+        return backtest_service.build_chart_data_synthetic_fallback(
+            session, run, use_adjusted=query.use_adjusted
+        )
+
+    # 3) 운영 모드 + 데이터 없음 → 404
+    requested_sym = query.symbol or (run.universe_config_json or {}).get("symbol")
+    raise MarketDataNotFoundError(
+        f"daily_prices에 종목 {requested_sym!r}의 가격 데이터가 없습니다. "
+        f"데이터 수집 파이프라인 실행 후 다시 시도하세요.",
+        details=[
+            {"field": "symbol", "message": str(requested_sym)},
+            {"field": "run_id", "message": str(run.id)},
+        ],
     )
-    equity_curve = [
-        {"time": eq.date.isoformat(), "value": eq.total_equity, "drawdown": eq.drawdown}
-        for eq in equity_rows
-    ]
-
-    return {
-        "candles": candles,
-        "markers": markers,
-        "equity_curve": equity_curve,
-    }
 
 
 @router.get("/{run_id}/daily-equity", summary="일별 자산")
