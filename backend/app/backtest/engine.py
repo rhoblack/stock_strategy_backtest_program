@@ -122,6 +122,7 @@ EVENT_REASON_MAX_DAILY_ENTRIES = "skip_max_daily_entries"  # 04-l
 EVENT_REASON_DAILY_BUY_BUDGET = "skip_daily_buy_budget"    # 04-m
 EVENT_REASON_MAX_GAP = "skip_max_gap"                      # 13.4.1 — 갭 매수 차단
 EVENT_REASON_FORCE_SELL_DELISTED = "force_sell_delisted"   # 13.4.5 — 상장폐지 강제 매도
+EVENT_REASON_CASH_SHORTAGE = "buy_skipped_cash_shortage"  # 05-j — CashManager 후에도 예산 부족
 
 
 class BacktestEngine:
@@ -1147,6 +1148,19 @@ class BacktestEngine:
             exec_price, quantity, raw_price=next_open
         )
         if execution.net_amount > self.portfolio.cash:
+            # 05-j: CashManager 시도 후에도 예수금이 부족한 경우 event_log 기록.
+            # CashManager 미사용 / disabled 경우도 동일하게 기록 (예산 부족이라는
+            # 사실은 동일하고, 강제 매도 시도 여부와 무관하게 skip 사유가 됨).
+            self._log_event(
+                date=today,
+                symbol=symbol,
+                event_type=EVENT_TYPE_SKIP,
+                reason=EVENT_REASON_CASH_SHORTAGE,
+                detail={
+                    "required_cash": int(execution.net_amount),
+                    "available_cash": int(self.portfolio.cash),
+                },
+            )
             return 0.0
 
         # 022 — daily_buy_budget 동적 체크. cumulative + 본 후보 net_amount가
