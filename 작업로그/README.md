@@ -90,6 +90,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [028-jobs-scheduler-and-alerts](./2026-05-10-028-jobs-scheduler-and-alerts.md) | 11 | market-data-engineer | ✅ | **14-j·k 해소 / Phase 11 마지막 step**: 5 jobs(DailyUpdate/HistoricalBackfill/CorporateActionApply/MarketIndex/UniverseSnapshot) + Scheduler busy-set 락 + LockError + MissingDataCheckJob(forward-fill 금지) + 50건 신규 / 820 PASS — **65% (test-engineer 검증 대기)** |
 | 2026-05-10 | [027-market-indices-and-universe-history](./2026-05-10-027-market-indices-and-universe-history.md) | 11 | market-data-engineer | ✅ | **06-i + 07-o·p + 14-i 해소**: market_indices(KOSPI/KOSDAQ/KOSPI200/KOSDAQ150/KRX100) + universe_history(config_json/symbols_json/run_id) + alembic 59cda024ecf8 + 33건 신규 / 770 PASS / **0 fail** (016 head 가드 정리) — 64% |
 | 2026-05-10 | [026-corporate-actions-and-adjusted-price](./2026-05-10-026-corporate-actions-and-adjusted-price.md) | 11 | market-data-engineer | ✅ | **06-h + 07-n + 14-h + 13-r 해소**: corporate_actions 모델(8 event_type) + AdjustedPriceProcessor(시간 역순 적용, close 보존) + alembic c7f2a16d8b53 + 43건 신규 / 736 PASS — 62% |
 | 2026-05-10 | [025-pykrx-collector](./2026-05-10-025-pykrx-collector.md) | 11 | market-data-engineer | ✅ | **14-e·f·g 해소**: PykrxCollector(_fetch_* 격리, lazy import) + retry(1s→5s→30s, jitter 없음) + validators(HARD/SOFT 매핑) + RetryableCollectorError 다중상속 + 51건 신규 / 693 PASS — **60% 돌파** 🎉 |
