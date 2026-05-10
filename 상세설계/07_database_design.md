@@ -183,11 +183,12 @@ progress_pct:
 실행 상태:
 
 ```text
-pending
-running
-completed
-failed
-cancelled
+pending     (대기 중)
+running     (실행 중)
+cancelling  (취소 요청 수신, 엔진 중단 신호 전달 중 — step 037에서 추가)
+completed   (완료)
+failed      (오류 종료)
+cancelled   (취소 완료)
 ```
 
 ---

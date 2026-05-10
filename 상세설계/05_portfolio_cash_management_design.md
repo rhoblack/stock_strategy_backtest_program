@@ -250,13 +250,16 @@ def sell_symbol_fifo(self, symbol, price, quantity, date, reason):
 
 ### 7.3 비용 처리
 
-수수료, 거래세, 슬리피지는 ExecutionModel에서 계산해서 가격에 반영한 뒤 Portfolio에 전달합니다.
+수수료, 거래세, 슬리피지는 ExecutionModel에서 계산해서 `ExecutionResult` dataclass로 반환한 뒤 Portfolio에 전달합니다 (step 013에서 도입).
 
 ```text
 체결가 (호가단위 보정) → ExecutionModel.calculate_sell_proceeds(price, qty, date)
-                       → 순수익 = gross - fee - tax
-                       → Portfolio.cash 증가
+                       → ExecutionResult(price, quantity, gross_amount, fee, tax, net_amount)
+                       → Portfolio.cash += result.net_amount
+                       → trade_executions에 gross_amount/fee/tax/net_amount 영속화
 ```
+
+KRW 금액(gross_amount, fee, tax, net_amount)은 소수점 없는 정수로 처리합니다 (정확성 정책 13.14절).
 
 ---
 
@@ -307,6 +310,15 @@ class PositionSizer:
 ## 9. CashManager 설계
 
 예수금 부족 시 현금을 확보하는 규칙을 실행합니다.
+
+CashManager는 강제 매도 체결 시 슬리피지/세금이 0이 되는 문제를 방지하기 위해 `ExecutionModel`을 주입받아 사용합니다 (step 013에서 수정):
+
+```python
+class CashManager:
+    def __init__(self, rule: dict, execution_model):
+        self.rule = rule
+        self.execution_model = execution_model  # 강제 매도 체결가/비용 계산에 사용
+```
 
 예시 규칙:
 

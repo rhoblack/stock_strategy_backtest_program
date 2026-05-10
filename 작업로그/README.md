@@ -92,6 +92,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [039-design-doc-update](./2026-05-11-039-design-doc-update.md) | 13 | PM (메인 세션) | ✅ | **Phase 13 마지막 step**: 설계서 6개 동기화 (04/05/07/13/14 §17 acceptance 경로 + cancelling 상태 + ExecutionResult) |
 | 2026-05-11 | [038-alembic-fixtures](./2026-05-11-038-alembic-fixtures.md) | 13 | backend-api-engineer | ✅ | **12-h·i 해소**: 13.17 acceptance 1:1 매핑(17건) + fixtures/golden 표준 구조 + alembic 검증 — 1060 PASS |
 | 2026-05-11 | [037-cancel-and-error-catalog](./2026-05-11-037-cancel-and-error-catalog.md) | 13 | backend-api-engineer | ✅ | **10-q·r 해소**: cancel 엔진 전파(CancellationToken) + 에러 카탈로그 §7.1 정식화(25코드) — 1036 PASS / 80% 돌파 |
 | 2026-05-11 | [036-api-rest-completion](./2026-05-11-036-api-rest-completion.md) | 13 | backend-api-engineer | ✅ | **10-m·n·o·p 해소**: strategies versions + backtests 목록/상세 + 시장 데이터 API + trades pagination — 961 PASS |
@@ -252,7 +253,8 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 ✅ 완료: step 036 — strategies versions + backtests 목록/상세 + 시장 데이터 API + trades pagination (10-m·n·o·p 해소, 961 PASS)
 ✅ 완료: step 037 — cancel 엔진 전파(CancellationToken) + 에러 카탈로그 §7.1 정식화 (10-q·r 해소, 1036 PASS)
 ✅ 완료: step 038 — 13.17 acceptance 1:1 매핑 + fixtures/golden 표준 구조 + alembic 검증 (12-h·i 해소, 1060 PASS)
-🔄 다음: step 039 — 설계서 갱신 (04/05/07/13/06/14) — PM 메인 세션 담당
+✅ 완료: step 039 — 설계서 6개 동기화 (04/05/07/13/14) — Phase 13 모든 step 완료
+⏳ 다음: Phase 13 test-engineer 검증 → ship-go 후 git push origin main
 
 Phase 13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 

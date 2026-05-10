@@ -80,7 +80,9 @@ class BacktestEngine:
         self.universe_selector = universe_selector
         self.config = config
 
-    def run(self):
+    def run(self, cancel_token=None):
+        # cancel_token: CancellationToken | None
+        # 날짜 루프 상단에서 cancel_token.check_cancelled() 호출 → BacktestCancelledError 발생
         # 1. 거래일 목록 생성
         # 2. 날짜별 루프 실행
         # 3. 일별 포트폴리오 상태 기록
@@ -234,6 +236,21 @@ close:
 ```
 
 기본값은 `next_open`입니다.
+
+체결 결과는 `ExecutionResult` dataclass로 반환합니다 (step 013에서 도입):
+
+```python
+@dataclass
+class ExecutionResult:
+    price: int          # 호가 단위 보정된 체결가 (KRW 정수)
+    quantity: int
+    gross_amount: int   # 체결가 × 수량
+    fee: int            # 수수료
+    tax: int            # 거래세 (매도 시)
+    net_amount: int     # gross ± fee ± tax
+```
+
+KRW 금액은 소수점 없는 정수로 처리합니다 (정확성 정책 13.14절).
 
 향후 확장:
 

@@ -23,29 +23,46 @@
 ## 3. 수집 대상 데이터
 
 ```text
-1. 종목 마스터 (symbols)
+1. 종목 마스터 (symbols)               ✅ 구현 완료 (step 016)
    - 코스피/코스닥 전 종목 메타데이터
    - 상장일, 상장폐지일, 시장구분, 업종
    - ETF/ETN/스팩/우선주/관리종목 플래그
    
-2. 일봉 시세 (daily_prices)
+2. 일봉 시세 (daily_prices)            ✅ 구현 완료 (step 016)
    - OHLCV
    - 거래대금
    - 수정주가 (adj_open, adj_high, adj_low, adj_close)
    - 수정 거래량 (adj_volume)
    - 시가총액
    
-3. 거래일 캘린더 (trading_calendar)
+3. 거래일 캘린더 (trading_calendar)    ✅ 구현 완료 (step 016)
    - KRX 공식 휴장일 반영
    
-4. 시장 지수 (market_indices)
-   - KOSPI, KOSDAQ, KOSPI200 일봉
+4. 시장 지수 (market_indices)          ✅ 구현 완료 (step 027)
+   - KOSPI, KOSDAQ, KOSPI200, KOSDAQ150, KRX100 일봉
    - 벤치마크 비교 및 시장 지수 필터에 사용
 
-5. 정정 이력 (corporate_actions)
+5. 정정 이력 (corporate_actions)       ✅ 구현 완료 (step 026)
    - 액면분할/병합
    - 유무상증자
    - 배당
+```
+
+### 3.1 수집 파이프라인 구현 현황
+
+```text
+PykrxCollector         ✅ step 025 (retry 3회: 1s→5s→30s, jitter 없음, HARD/SOFT validator)
+AdjustedPriceProcessor ✅ step 026 (corporate_actions 시간 역순 적용, close 보존)
+DailyUpdateJob         ✅ step 028
+HistoricalBackfillJob  ✅ step 028
+CorporateActionApplyJob✅ step 028
+MarketIndexJob         ✅ step 028
+UniverseSnapshotJob    ✅ step 028
+Scheduler              ✅ step 028 (busy-set 락, LockError)
+MissingDataCheckJob    ✅ step 028 (forward-fill 금지)
+LocalCsvProvider       ✅ step 018
+PriceLoader            ✅ step 018 (BacktestEngine 호환 next_* DataFrame)
+UniverseSelector       ✅ step 019 (06번 §8 공통 필터 8개 + look-ahead 차단)
 ```
 
 ---
