@@ -296,16 +296,18 @@ class BacktestEngine:
 
         # 사전 fund 확보 (CashManager 옵션)
         if self.cash_manager is not None and self.cash_manager.enabled:
-            # 추정 비용으로 미리 cash 확보 시도
+            # 추정 비용으로 미리 cash 확보 시도 — ExecutionResult.net_amount 사용
             est_price = self.execution_model.apply_slippage_and_tick(
                 next_open, side="buy", market=self.config.market
             )
             est_quantity = int(self.config.position_size_amount // max(est_price, 1))
             if est_quantity > 0:
-                est_cost = self.execution_model.calculate_buy_cost(est_price, est_quantity)
+                est_execution = self.execution_model.calculate_buy_cost(
+                    est_price, est_quantity, raw_price=next_open
+                )
                 events = self.cash_manager.handle_shortage(
                     self.portfolio,
-                    required_cash=est_cost,
+                    required_cash=est_execution.net_amount,
                     on_date=today,
                     price_provider=lambda s, _d: float(row["adj_close"]),
                 )
@@ -323,8 +325,10 @@ class BacktestEngine:
         if quantity <= 0:
             return
 
-        cost = self.execution_model.calculate_buy_cost(exec_price, quantity)
-        if cost > self.portfolio.cash:
+        execution = self.execution_model.calculate_buy_cost(
+            exec_price, quantity, raw_price=next_open
+        )
+        if execution.net_amount > self.portfolio.cash:
             return
 
         self.portfolio.buy(
@@ -333,7 +337,7 @@ class BacktestEngine:
             quantity=quantity,
             on_date=today,
             reason="entry_signal",
-            cost_override=cost,
+            execution=execution,
         )
 
     def _process_sell_at_price(
@@ -345,14 +349,18 @@ class BacktestEngine:
         reason: str,
         result: BacktestResult,
     ) -> None:
-        """price를 슬리피지/호가/세금 처리한 뒤 FIFO로 매도."""
+        """price를 슬리피지/호가/세금 처리한 뒤 FIFO로 매도.
+
+        ExecutionResult를 sell_symbol_fifo에 전달하여 fee/tax/net이 분해된 채로
+        Portfolio.trade_logs에 기록되게 한다 (리뷰 011 H1 + M2 + M4).
+        """
         # 갭 손절/익절은 시가 그대로 체결 (이미 정확성 정책에 따라 호출자가 결정)
         # 슬리피지는 모든 매도에 보수적으로 적용
         exec_price = self.execution_model.apply_slippage_and_tick(
             price, side="sell", market=self.config.market
         )
-        proceeds = self.execution_model.calculate_sell_proceeds(
-            exec_price, quantity, on_date
+        execution = self.execution_model.calculate_sell_proceeds(
+            exec_price, quantity, on_date, raw_price=price
         )
         self.portfolio.sell_symbol_fifo(
             symbol=symbol,
@@ -360,7 +368,7 @@ class BacktestEngine:
             quantity=quantity,
             on_date=on_date,
             reason=reason,
-            proceeds_override=proceeds,
+            execution=execution,
         )
 
     def _record_daily_equity(

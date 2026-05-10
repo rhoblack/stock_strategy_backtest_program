@@ -1,7 +1,16 @@
 """CashManager — 예수금 부족 시 보유 종목 일부 매도.
 
-설계서 05번 9~12절 + 정확성 정책 13.9.
+설계서 05번 9~12절 + 정확성 정책 13.5(호가) / 13.6(세율) / 13.9.
 종목코드 정렬 tie-breaker로 결정론 보장.
+
+리뷰 011 C2 해소:
+    강제 매도(cash_shortage_partial_sell)도 일반 exit_signal/exit_position
+    매도와 동일한 ExecutionModel 경로(슬리피지 + 호가 단위 + 거래세 시계열)를
+    거친다. 이전에는 raw price * qty로 직접 sell_symbol_fifo를 호출하여
+    슬리피지·세금이 모두 0인 비현실적 매도가 백테스트 수익을 좋게 만들었다.
+
+    ExecutionModel을 주입받지 않은 경우(레거시 호환)는 raw price 매도로
+    fallback하지만, BacktestEngine 경로에서는 항상 주입된 상태로 사용한다.
 """
 
 from __future__ import annotations
@@ -9,6 +18,7 @@ from __future__ import annotations
 from datetime import date as date_type
 from typing import Any
 
+from app.backtest.execution import ExecutionModel
 from app.portfolio.portfolio import Portfolio
 from app.portfolio.position import Position
 
@@ -16,8 +26,25 @@ from app.portfolio.position import Position
 class CashManager:
     """전략 JSON의 cash_management.shortage_rule 한 묶음을 받아 동작."""
 
-    def __init__(self, rule: dict | None):
-        """rule이 None 또는 enabled=False면 no-op."""
+    def __init__(
+        self,
+        rule: dict | None,
+        execution_model: ExecutionModel | None = None,
+        market: str = "KOSPI",
+    ):
+        """rule이 None 또는 enabled=False면 no-op.
+
+        Parameters
+        ----------
+        execution_model : ExecutionModel | None
+            강제 매도 시 슬리피지/호가/세율을 적용할 모델. None이면 raw price
+            그대로 매도(레거시 호환 — 단위 테스트 외에는 사용 금지).
+        market : str
+            tick_size 결정용 시장 코드. ExecutionModel에 위임.
+        """
+        self._execution_model = execution_model
+        self._market = market
+
         if not rule or not rule.get("enabled", True):
             self._enabled = False
             return
@@ -40,7 +67,8 @@ class CashManager:
     ) -> list[dict]:
         """필요 현금 확보 시도. 발동된 cash_event 로그 list 반환.
 
-        price_provider(symbol, on_date) → float — 매도 체결가 산출.
+        price_provider(symbol, on_date) → float — 매도 체결 raw price 산출.
+        ExecutionModel이 주입되어 있으면 이 raw price에 슬리피지+호가+세금을 적용.
         """
         if not self._enabled or portfolio.cash >= required_cash:
             return []
@@ -57,16 +85,45 @@ class CashManager:
             if quantity <= 0:
                 break
 
-            price = price_provider(target.symbol, on_date)
+            raw_price = price_provider(target.symbol, on_date)
             cash_before = portfolio.cash
-            portfolio.sell_symbol_fifo(
-                symbol=target.symbol,
-                price=price,
-                quantity=quantity,
-                on_date=on_date,
-                reason="cash_shortage_partial_sell",
-            )
-            sell_amount = price * quantity
+
+            # ExecutionModel이 주입돼 있으면 슬리피지+호가+세금을 모두 적용
+            if self._execution_model is not None:
+                exec_price = self._execution_model.apply_slippage_and_tick(
+                    raw_price, side="sell", market=self._market
+                )
+                execution = self._execution_model.calculate_sell_proceeds(
+                    exec_price, quantity, on_date, raw_price=raw_price
+                )
+                portfolio.sell_symbol_fifo(
+                    symbol=target.symbol,
+                    price=exec_price,
+                    quantity=quantity,
+                    on_date=on_date,
+                    reason="cash_shortage_partial_sell",
+                    execution=execution,
+                )
+                gross = execution.gross_amount
+                fee = execution.fee
+                tax = execution.tax
+                net = execution.net_amount
+                exec_price_used = exec_price
+            else:
+                # 레거시 fallback — slippage/세금 없이 raw price로 매도
+                portfolio.sell_symbol_fifo(
+                    symbol=target.symbol,
+                    price=raw_price,
+                    quantity=quantity,
+                    on_date=on_date,
+                    reason="cash_shortage_partial_sell",
+                )
+                gross = raw_price * quantity
+                fee = 0.0
+                tax = 0.0
+                net = gross
+                exec_price_used = raw_price
+
             events.append(
                 {
                     "date": on_date,
@@ -76,7 +133,15 @@ class CashManager:
                     "action": "partial_sell",
                     "symbol": target.symbol,
                     "sell_quantity": quantity,
-                    "sell_amount": sell_amount,
+                    # 기존 키 유지 (서비스 영속화 호환)
+                    "sell_amount": net,
+                    # 신규 분해 키 (014 step에서 영속화 매핑 가능)
+                    "exec_price": exec_price_used,
+                    "raw_price": raw_price,
+                    "gross_amount": gross,
+                    "fee": fee,
+                    "tax": tax,
+                    "net_amount": net,
                     "cash_after": portfolio.cash,
                     "reason": "cash_shortage_partial_sell",
                 }

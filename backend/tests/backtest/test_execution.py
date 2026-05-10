@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from app.backtest.execution import ExecutionModel, TaxRateEntry
+from app.backtest.execution import ExecutionModel, ExecutionResult, TaxRateEntry
 
 # === 거래세 시계열 ===
 
@@ -114,27 +114,38 @@ def test_apply_slippage_invalid_side_raises():
 
 def test_buy_cost_includes_fee():
     em = ExecutionModel(fee_rate=0.0015, tax_rate=0.0, slippage=0.0)
-    cost = em.calculate_buy_cost(price=10_000, quantity=10)
-    assert cost == pytest.approx(10_000 * 10 + 10_000 * 10 * 0.0015)
+    res = em.calculate_buy_cost(price=10_000, quantity=10)
+    assert isinstance(res, ExecutionResult)
+    assert res.side == "buy"
+    assert res.gross_amount == pytest.approx(100_000)
+    assert res.fee == pytest.approx(100_000 * 0.0015)
+    assert res.tax == 0.0  # BUY는 세금 없음
+    assert res.net_amount == pytest.approx(100_000 + 100_000 * 0.0015)
 
 
 def test_sell_proceeds_subtracts_fee_and_tax():
     em = ExecutionModel(fee_rate=0.0015, tax_rate=0.0018, slippage=0.0)
-    proceeds = em.calculate_sell_proceeds(
+    res = em.calculate_sell_proceeds(
         price=10_000, quantity=10, on_date=date(2024, 6, 1)
     )
+    assert isinstance(res, ExecutionResult)
+    assert res.side == "sell"
     gross = 100_000
-    expected = gross - gross * 0.0015 - gross * 0.0018
-    assert proceeds == pytest.approx(expected)
+    assert res.gross_amount == pytest.approx(gross)
+    assert res.fee == pytest.approx(gross * 0.0015)
+    assert res.tax == pytest.approx(gross * 0.0018)
+    assert res.net_amount == pytest.approx(gross - gross * 0.0015 - gross * 0.0018)
 
 
 def test_sell_proceeds_uses_correct_tax_rate_per_date():
     em = ExecutionModel(fee_rate=0.0, tax_rate=_kr_tax_history(), slippage=0.0)
     # 2024 → 0.0018, 2025 → 0.0015
-    p_2024 = em.calculate_sell_proceeds(10_000, 10, date(2024, 6, 1))
-    p_2025 = em.calculate_sell_proceeds(10_000, 10, date(2025, 6, 1))
-    assert p_2024 == pytest.approx(100_000 * (1 - 0.0018))
-    assert p_2025 == pytest.approx(100_000 * (1 - 0.0015))
+    r_2024 = em.calculate_sell_proceeds(10_000, 10, date(2024, 6, 1))
+    r_2025 = em.calculate_sell_proceeds(10_000, 10, date(2025, 6, 1))
+    assert r_2024.tax == pytest.approx(100_000 * 0.0018)
+    assert r_2025.tax == pytest.approx(100_000 * 0.0015)
+    assert r_2024.net_amount == pytest.approx(100_000 * (1 - 0.0018))
+    assert r_2025.net_amount == pytest.approx(100_000 * (1 - 0.0015))
 
 
 # === 생성자 검증 ===
@@ -148,3 +159,67 @@ def test_negative_fee_rate_raises():
 def test_negative_slippage_raises():
     with pytest.raises(ValueError):
         ExecutionModel(fee_rate=0.0, tax_rate=0.0, slippage=-0.001)
+
+
+# === ExecutionResult dataclass (리뷰 011 H1 + M4) ===
+
+
+def test_execution_result_buy_invariants():
+    """BUY: net = gross + fee, tax = 0, slippage_applied = gross - raw*qty."""
+    em = ExecutionModel(fee_rate=0.0015, tax_rate=0.0023, slippage=0.001)
+    # raw_price 9990 → slippage 후 약 10000원으로 호가 보정됨
+    res = em.calculate_buy_cost(price=10_000, quantity=10, raw_price=9_990)
+    assert res.side == "buy"
+    assert res.price == 10_000
+    assert res.quantity == 10
+    assert res.gross_amount == pytest.approx(100_000)
+    assert res.fee == pytest.approx(150)
+    assert res.tax == 0.0  # BUY는 세금 없음
+    assert res.net_amount == pytest.approx(100_150)
+    assert res.slippage_applied == pytest.approx(100_000 - 9_990 * 10)
+
+
+def test_execution_result_sell_invariants():
+    """SELL: net = gross - fee - tax, tax는 on_date 기준."""
+    em = ExecutionModel(fee_rate=0.0015, tax_rate=0.0018, slippage=0.001)
+    res = em.calculate_sell_proceeds(
+        price=10_000, quantity=10, on_date=date(2024, 6, 1), raw_price=10_010
+    )
+    assert res.side == "sell"
+    assert res.gross_amount == pytest.approx(100_000)
+    assert res.fee == pytest.approx(150)
+    assert res.tax == pytest.approx(180)
+    assert res.net_amount == pytest.approx(100_000 - 150 - 180)
+
+
+def test_execution_result_to_log_dict_keys():
+    em = ExecutionModel(fee_rate=0.0015, tax_rate=0.0018, slippage=0.0)
+    res = em.calculate_sell_proceeds(price=10_000, quantity=10, on_date=date(2024, 6, 1))
+    d = res.to_log_dict()
+    assert set(d.keys()) == {
+        "price",
+        "quantity",
+        "gross_amount",
+        "fee",
+        "tax",
+        "net_amount",
+        "slippage_applied",
+    }
+
+
+def test_execution_result_zero_quantity_raises():
+    em = ExecutionModel(fee_rate=0.0, tax_rate=0.0, slippage=0.0)
+    with pytest.raises(ValueError):
+        em.calculate_buy_cost(price=10_000, quantity=0)
+    with pytest.raises(ValueError):
+        em.calculate_sell_proceeds(price=10_000, quantity=0, on_date=date(2024, 1, 1))
+
+
+def test_execution_result_immutable():
+    """frozen dataclass — 외부에서 수정 불가."""
+    from dataclasses import FrozenInstanceError
+
+    em = ExecutionModel(fee_rate=0.0, tax_rate=0.0, slippage=0.0)
+    res = em.calculate_buy_cost(price=10_000, quantity=10)
+    with pytest.raises(FrozenInstanceError):
+        res.price = 99_999  # type: ignore[misc]

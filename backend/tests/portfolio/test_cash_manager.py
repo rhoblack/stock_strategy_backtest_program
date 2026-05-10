@@ -4,6 +4,7 @@ from datetime import date
 
 import pytest
 
+from app.backtest.execution import ExecutionModel
 from app.portfolio.cash_manager import CashManager
 from app.portfolio.portfolio import Portfolio
 
@@ -124,3 +125,151 @@ def test_unknown_method_raises():
     p.update_market_price("B", 10_000)
     with pytest.raises(ValueError):
         cm.handle_shortage(p, 999_999, date(2024, 1, 5), lambda *_: 10_000)
+
+
+# === 리뷰 011 C2: ExecutionModel 주입 시 슬리피지/세금 적용 ===
+
+
+def test_forced_sell_applies_slippage_and_tax_when_execution_model_injected():
+    """ExecutionModel 주입 시 강제 매도 net_amount < raw_price * qty.
+
+    슬리피지(매도는 가격 인하) + 거래세 + 수수료가 적용되어 net이 줄어들어야 함.
+    """
+    p = _portfolio_with_two_positions()
+    p.update_market_price("A", 10_000)
+    p.update_market_price("B", 10_000)
+
+    em = ExecutionModel(fee_rate=0.00015, tax_rate=0.0018, slippage=0.001)
+    cm = CashManager(
+        {
+            "enabled": True,
+            "shortage_rule": {
+                "action": {"sell_fraction": 0.4},
+                "target_selection": {"method": "lowest_return"},
+            },
+        },
+        execution_model=em,
+    )
+
+    raw_price = 10_000
+    qty = 2  # 5 * 0.4
+    events = cm.handle_shortage(
+        p,
+        required_cash=10_000,
+        on_date=date(2024, 6, 1),
+        price_provider=lambda *_: raw_price,
+    )
+    assert len(events) == 1
+    ev = events[0]
+    raw_proceeds = raw_price * qty  # 20,000
+    assert ev["net_amount"] < raw_proceeds, (
+        "ExecutionModel 적용 시 net_amount는 raw_price*qty보다 작아야 한다 "
+        "(슬리피지+세금)"
+    )
+    # fee/tax 분해가 0보다 큼
+    assert ev["fee"] > 0
+    assert ev["tax"] > 0
+    # 슬리피지로 인해 exec_price가 raw_price보다 낮음
+    assert ev["exec_price"] < raw_price
+
+
+def test_forced_sell_legacy_fallback_when_no_execution_model():
+    """ExecutionModel 미주입 시 raw price 그대로 매도 (레거시 fallback)."""
+    p = _portfolio_with_two_positions()
+    p.update_market_price("A", 10_000)
+    p.update_market_price("B", 10_000)
+
+    cm = CashManager(
+        {
+            "enabled": True,
+            "shortage_rule": {
+                "action": {"sell_fraction": 0.4},
+                "target_selection": {"method": "lowest_return"},
+            },
+        },
+        # execution_model=None (default)
+    )
+
+    raw_price = 10_000
+    qty = 2
+    events = cm.handle_shortage(
+        p,
+        required_cash=10_000,
+        on_date=date(2024, 6, 1),
+        price_provider=lambda *_: raw_price,
+    )
+    ev = events[0]
+    assert ev["net_amount"] == raw_price * qty
+    assert ev["fee"] == 0.0
+    assert ev["tax"] == 0.0
+
+
+def test_forced_sell_records_fee_tax_in_trade_logs():
+    """ExecutionModel 주입 시 portfolio.trade_logs에도 fee/tax가 기록됨."""
+    p = _portfolio_with_two_positions()
+    p.update_market_price("A", 10_000)
+    p.update_market_price("B", 10_000)
+
+    em = ExecutionModel(fee_rate=0.00015, tax_rate=0.0018, slippage=0.001)
+    cm = CashManager(
+        {
+            "enabled": True,
+            "shortage_rule": {
+                "action": {"sell_fraction": 0.4},
+                "target_selection": {"method": "lowest_return"},
+            },
+        },
+        execution_model=em,
+    )
+    cm.handle_shortage(
+        p,
+        required_cash=10_000,
+        on_date=date(2024, 6, 1),
+        price_provider=lambda *_: 10_000,
+    )
+
+    sell_logs = [t for t in p.trade_logs if t.get("execution_type") in ("SELL", "PARTIAL_SELL")]
+    assert len(sell_logs) >= 1
+    log = sell_logs[-1]
+    assert log["reason"] == "cash_shortage_partial_sell"
+    assert log["fee"] > 0
+    assert log["tax"] > 0
+    assert log["net_amount"] == log["gross_amount"] - log["fee"] - log["tax"]
+
+
+def test_cash_manager_uses_execution_model_via_spy():
+    """ExecutionModel.calculate_sell_proceeds가 호출되는지 spy로 검증."""
+    p = _portfolio_with_two_positions()
+    p.update_market_price("A", 10_000)
+    p.update_market_price("B", 10_000)
+
+    em = ExecutionModel(fee_rate=0.00015, tax_rate=0.0018, slippage=0.001)
+    call_log: list[tuple] = []
+
+    original = em.calculate_sell_proceeds
+
+    def spy(price, quantity, on_date, *, raw_price=None):
+        call_log.append((price, quantity, on_date, raw_price))
+        return original(price, quantity, on_date, raw_price=raw_price)
+
+    em.calculate_sell_proceeds = spy  # type: ignore[method-assign]
+
+    cm = CashManager(
+        {
+            "enabled": True,
+            "shortage_rule": {
+                "action": {"sell_fraction": 0.4},
+                "target_selection": {"method": "lowest_return"},
+            },
+        },
+        execution_model=em,
+    )
+    cm.handle_shortage(
+        p,
+        required_cash=10_000,
+        on_date=date(2024, 6, 1),
+        price_provider=lambda *_: 10_000,
+    )
+    assert len(call_log) == 1
+    # raw_price가 제대로 전달됨
+    assert call_log[0][3] == 10_000

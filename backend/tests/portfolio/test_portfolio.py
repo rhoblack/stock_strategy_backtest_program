@@ -4,6 +4,7 @@ from datetime import date
 
 import pytest
 
+from app.backtest.execution import ExecutionModel, ExecutionResult
 from app.portfolio.portfolio import Portfolio
 
 # === 기본 ===
@@ -337,3 +338,165 @@ def test_positions_count_reflects_unique_symbols():
     p.buy(symbol="B", price=1_000, quantity=10, on_date=date(2024, 1, 10))
     p.buy(symbol="C", price=1_000, quantity=10, on_date=date(2024, 1, 10))
     assert p.positions_count() == 3
+
+
+# === ExecutionResult 통합 (리뷰 011 H1 + M2 + M4) ===
+
+
+def test_buy_with_execution_result_records_fee_breakdown():
+    """ExecutionResult로 buy() 호출 시 trade_logs에 fee/tax/gross/net 기록됨."""
+    em = ExecutionModel(fee_rate=0.00015, tax_rate=0.0023, slippage=0.0)
+    p = Portfolio(initial_cash=1_000_000)
+    execution = em.calculate_buy_cost(price=10_000, quantity=10)
+    p.buy(
+        symbol="005930",
+        price=10_000,
+        quantity=10,
+        on_date=date(2024, 6, 10),
+        execution=execution,
+    )
+    log = p.trade_logs[-1]
+    assert log["execution_type"] == "BUY"
+    assert log["side"] == "buy"
+    assert log["gross_amount"] == pytest.approx(100_000)
+    assert log["fee"] == pytest.approx(15.0)
+    assert log["tax"] == 0.0
+    assert log["net_amount"] == pytest.approx(100_015)
+    # 호환 키 cost도 net과 동일
+    assert log["cost"] == pytest.approx(100_015)
+    assert p.cash == pytest.approx(1_000_000 - 100_015)
+
+
+def test_sell_with_execution_result_records_fee_tax_breakdown():
+    """ExecutionResult로 sell_trade_group() 호출 시 fee/tax 분해 기록."""
+    em = ExecutionModel(fee_rate=0.00015, tax_rate=0.0018, slippage=0.0)
+    p = Portfolio(initial_cash=1_000_000)
+    tg_id = p.buy(symbol="005930", price=10_000, quantity=10, on_date=date(2024, 6, 1))
+    sell_exec = em.calculate_sell_proceeds(
+        price=11_000, quantity=10, on_date=date(2024, 6, 20)
+    )
+    p.sell_trade_group(
+        symbol="005930",
+        trade_group_id=tg_id,
+        price=11_000,
+        quantity=10,
+        on_date=date(2024, 6, 20),
+        reason="take_profit",
+        execution=sell_exec,
+    )
+    log = p.trade_logs[-1]
+    assert log["execution_type"] == "SELL"
+    assert log["side"] == "sell"
+    assert log["gross_amount"] == pytest.approx(110_000)
+    assert log["fee"] == pytest.approx(110_000 * 0.00015)
+    assert log["tax"] == pytest.approx(110_000 * 0.0018)
+    assert log["net_amount"] == pytest.approx(110_000 - 110_000 * 0.00015 - 110_000 * 0.0018)
+
+
+def test_realized_profit_uses_net_amount_when_execution_passed():
+    """리뷰 011 M2: realized_profit/_rate가 ExecutionResult.net_amount 기반.
+
+    수수료/세금 차감된 net 기준이라 raw price 기반보다 작아야 한다.
+    """
+    em = ExecutionModel(fee_rate=0.00015, tax_rate=0.0018, slippage=0.0)
+    p = Portfolio(initial_cash=1_000_000)
+    tg_id = p.buy(symbol="005930", price=10_000, quantity=10, on_date=date(2024, 6, 1))
+    sell_exec = em.calculate_sell_proceeds(
+        price=11_000, quantity=10, on_date=date(2024, 6, 20)
+    )
+    p.sell_trade_group(
+        symbol="005930",
+        trade_group_id=tg_id,
+        price=11_000,
+        quantity=10,
+        on_date=date(2024, 6, 20),
+        reason="take_profit",
+        execution=sell_exec,
+    )
+    log = p.trade_logs[-1]
+
+    # raw 기반은 (11000-10000)*10 = 10,000 / 10%
+    # net 기반은 net_amount - cost_basis (cost_basis=10000*10=100000)
+    expected_profit = sell_exec.net_amount - 100_000
+    expected_rate = expected_profit / 100_000 * 100
+    assert log["realized_profit"] == pytest.approx(expected_profit)
+    assert log["realized_profit_rate"] == pytest.approx(expected_rate)
+    # raw 기반보다 작아야 함 (M2)
+    assert log["realized_profit"] < (11_000 - 10_000) * 10
+
+
+def test_buy_with_wrong_side_execution_result_raises():
+    p = Portfolio(initial_cash=1_000_000)
+    sell_res = ExecutionResult(
+        side="sell",
+        raw_price=10_000,
+        price=10_000,
+        quantity=10,
+        gross_amount=100_000,
+        fee=0,
+        tax=0,
+        net_amount=100_000,
+        slippage_applied=0,
+    )
+    with pytest.raises(ValueError, match="sell ExecutionResult"):
+        p.buy(
+            symbol="X",
+            price=10_000,
+            quantity=10,
+            on_date=date(2024, 1, 1),
+            execution=sell_res,
+        )
+
+
+def test_sell_fifo_with_execution_result_distributes_fee_proportionally():
+    """sell_symbol_fifo + ExecutionResult: fee/tax도 비례 분배되어야 함."""
+    em = ExecutionModel(fee_rate=0.001, tax_rate=0.002, slippage=0.0)
+    p = Portfolio(initial_cash=10_000_000)
+    p.buy(symbol="A", price=10_000, quantity=10, on_date=date(2024, 6, 1))
+    p.buy(
+        symbol="A",
+        price=12_000,
+        quantity=10,
+        on_date=date(2024, 6, 5),
+        allow_pyramiding=True,
+    )
+    # 15주 매도 (FIFO: tg1 10 + tg2 5)
+    sell_exec = em.calculate_sell_proceeds(
+        price=13_000, quantity=15, on_date=date(2024, 7, 1)
+    )
+    logs = p.sell_symbol_fifo(
+        symbol="A",
+        price=13_000,
+        quantity=15,
+        on_date=date(2024, 7, 1),
+        reason="exit_signal",
+        execution=sell_exec,
+    )
+    assert len(logs) == 2
+    # 비례 분배 검증
+    total_fee = sum(log["fee"] for log in logs)
+    total_tax = sum(log["tax"] for log in logs)
+    total_net = sum(log["net_amount"] for log in logs)
+    assert total_fee == pytest.approx(sell_exec.fee)
+    assert total_tax == pytest.approx(sell_exec.tax)
+    assert total_net == pytest.approx(sell_exec.net_amount)
+    # 첫 lot은 10주 → 2/3, 두 번째 lot은 5주 → 1/3
+    assert logs[0]["quantity"] == 10
+    assert logs[1]["quantity"] == 5
+    assert logs[0]["fee"] == pytest.approx(sell_exec.fee * 10 / 15)
+
+
+def test_sell_fifo_execution_quantity_mismatch_raises():
+    em = ExecutionModel(fee_rate=0.0, tax_rate=0.0, slippage=0.0)
+    p = Portfolio(initial_cash=10_000_000)
+    p.buy(symbol="A", price=10_000, quantity=10, on_date=date(2024, 6, 1))
+    sell_exec = em.calculate_sell_proceeds(price=11_000, quantity=5, on_date=date(2024, 6, 10))
+    with pytest.raises(ValueError, match="quantity"):
+        p.sell_symbol_fifo(
+            symbol="A",
+            price=11_000,
+            quantity=10,  # execution은 5주인데 10주 요청 — 불일치
+            on_date=date(2024, 6, 10),
+            reason="x",
+            execution=sell_exec,
+        )

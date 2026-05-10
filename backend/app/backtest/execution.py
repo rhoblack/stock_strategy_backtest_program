@@ -1,9 +1,13 @@
 """ExecutionModel — 체결 가격 / 비용 / 호가 단위 처리.
 
-설계서 04번 7~9절 + 정확성 정책 13.5(호가) / 13.6(세율 시계열).
+설계서 04번 7~9절 + 정확성 정책 13.5(호가) / 13.6(세율 시계열) / 13.7(수정주가).
 
 순환 import를 피하기 위해 Portfolio/Position을 직접 참조하지 않는다.
-호출자가 가격/수량/날짜를 넘겨주면 비용/수익을 계산해 반환만 한다.
+호출자가 가격/수량/날짜를 넘겨주면 비용/수익을 계산해 ExecutionResult를 반환한다.
+
+`calculate_buy_cost` / `calculate_sell_proceeds`는 단일 float이 아닌
+`ExecutionResult` dataclass로 분해 결과를 노출한다 — Portfolio.trade_logs와
+DB TradeExecution이 fee/tax/net을 분해 영속화할 수 있도록 함 (리뷰 011 H1 + M4).
 """
 
 from __future__ import annotations
@@ -21,6 +25,55 @@ class TaxRateEntry:
 
     from_date: date_type
     rate: float
+
+
+@dataclass(frozen=True)
+class ExecutionResult:
+    """체결 1건의 비용 분해 결과.
+
+    Portfolio.trade_logs / DB TradeExecution / cash_events가 동일한 분해를
+    영속화할 수 있도록 단일 dataclass로 노출한다 (리뷰 011 H1 + M4 해소).
+
+    Fields
+    ------
+    side : "buy" | "sell"
+    raw_price : 슬리피지 적용 전 입력 가격 (감사용)
+    price : 슬리피지+호가 단위 적용 후 체결가 (정수, KRW)
+    quantity : 체결 수량
+    gross_amount : price * quantity (비용 차감 전 거래대금)
+    fee : 수수료 = gross * fee_rate (BUY/SELL 모두 계산)
+    tax : 거래세 = gross * tax_rate(on_date) (BUY=0, SELL만 계산)
+    net_amount : 실제 현금 흐름
+        - BUY  : gross + fee  (예수금에서 빠져나가는 총액)
+        - SELL : gross - fee - tax (예수금에 들어오는 순수익)
+    slippage_applied : gross_amount과 raw_price * quantity 차이 (감사용)
+    """
+
+    side: str
+    raw_price: float
+    price: int
+    quantity: int
+    gross_amount: float
+    fee: float
+    tax: float
+    net_amount: float
+    slippage_applied: float
+
+    def to_log_dict(self) -> dict:
+        """Portfolio.trade_logs의 비용 분해 키로 펼쳐 넣을 수 있는 dict.
+
+        Portfolio가 자체적으로 채우는 키(date / symbol / trade_group_id /
+        execution_type / reason 등)는 포함하지 않는다 — 호출자가 합쳐서 사용.
+        """
+        return {
+            "price": self.price,
+            "quantity": self.quantity,
+            "gross_amount": self.gross_amount,
+            "fee": self.fee,
+            "tax": self.tax,
+            "net_amount": self.net_amount,
+            "slippage_applied": self.slippage_applied,
+        }
 
 
 # tax_rate 인자는 다음 셋 중 하나:
@@ -118,16 +171,89 @@ class ExecutionModel:
             raise ValueError(f"지원하지 않는 side: {side!r}")
         return round_to_tick(adjusted, market=market, side=side, mode=self.tick_rounding)
 
-    def calculate_buy_cost(self, price: float, quantity: int) -> float:
-        """매수 시 빠져나가는 총액 = price * qty + 수수료."""
-        gross = price * quantity
-        return gross + gross * self.fee_rate
+    def calculate_buy_cost(
+        self,
+        price: int | float,
+        quantity: int,
+        *,
+        raw_price: float | None = None,
+    ) -> ExecutionResult:
+        """매수 시 비용 분해 결과 반환.
+
+        Parameters
+        ----------
+        price : 호가 단위 적용 후 체결가 (`apply_slippage_and_tick` 결과)
+        quantity : 체결 수량 (>0)
+        raw_price : 슬리피지 적용 전 가격. None이면 price로 간주
+                    (감사용 slippage_applied 계산에 사용).
+
+        Returns
+        -------
+        ExecutionResult — net_amount = gross + fee, tax = 0
+        """
+        if quantity <= 0:
+            raise ValueError(f"quantity는 양수여야 합니다: {quantity}")
+
+        gross = float(price) * quantity
+        fee = gross * self.fee_rate
+        net = gross + fee
+
+        raw = float(raw_price) if raw_price is not None else float(price)
+        slippage_applied = gross - raw * quantity
+
+        return ExecutionResult(
+            side="buy",
+            raw_price=raw,
+            price=int(price),
+            quantity=int(quantity),
+            gross_amount=gross,
+            fee=fee,
+            tax=0.0,
+            net_amount=net,
+            slippage_applied=slippage_applied,
+        )
 
     def calculate_sell_proceeds(
-        self, price: float, quantity: int, on_date: date_type
-    ) -> float:
-        """매도 시 들어오는 순수익 = price * qty - 수수료 - 거래세 (시계열)."""
-        gross = price * quantity
+        self,
+        price: int | float,
+        quantity: int,
+        on_date: date_type,
+        *,
+        raw_price: float | None = None,
+    ) -> ExecutionResult:
+        """매도 시 비용 분해 결과 반환.
+
+        Parameters
+        ----------
+        price : 호가 단위 적용 후 체결가 (`apply_slippage_and_tick` 결과)
+        quantity : 체결 수량 (>0)
+        on_date : 체결일 (거래세 시계열 검색용 — 13.6.3)
+        raw_price : 슬리피지 적용 전 가격. None이면 price로 간주.
+
+        Returns
+        -------
+        ExecutionResult — net_amount = gross - fee - tax
+        """
+        if quantity <= 0:
+            raise ValueError(f"quantity는 양수여야 합니다: {quantity}")
+
+        gross = float(price) * quantity
         fee = gross * self.fee_rate
         tax = gross * self.get_tax_rate(on_date)
-        return gross - fee - tax
+        net = gross - fee - tax
+
+        raw = float(raw_price) if raw_price is not None else float(price)
+        # 매도는 슬리피지가 가격을 낮추므로 음수로 기록 (감사 시 일관성 유지)
+        slippage_applied = gross - raw * quantity
+
+        return ExecutionResult(
+            side="sell",
+            raw_price=raw,
+            price=int(price),
+            quantity=int(quantity),
+            gross_amount=gross,
+            fee=fee,
+            tax=tax,
+            net_amount=net,
+            slippage_applied=slippage_applied,
+        )
