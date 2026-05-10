@@ -146,7 +146,13 @@ def run_backtest(
             ),
             initial_cash=run.initial_cash,
         )
-        cash_manager = CashManager(run.strategy_snapshot_json.get("cash_management"))
+        # CashManager에 ExecutionModel 주입 — 강제 매도도 슬리피지/호가/세금 적용
+        # (리뷰 011 C2 해소). market은 단일 종목 가정으로 KOSPI 기본.
+        cash_manager = CashManager(
+            run.strategy_snapshot_json.get("cash_management"),
+            execution_model=execution_model,
+            market="KOSPI",
+        )
 
         engine = BacktestEngine(
             StrategyEngine(run.strategy_snapshot_json),
@@ -323,7 +329,10 @@ def _persist_trade_groups_and_executions(
         session.flush()
         tg_pk_map[in_mem_tg_id] = tg.id
 
-    # executions insert
+    # executions insert — ExecutionResult dataclass 분해 결과를 그대로 매핑.
+    # Portfolio.trade_logs에 이미 fee/tax/gross_amount/net_amount가 채워져 있다.
+    # (013 step에서 ExecutionResult 도입 + portfolio.py가 dict 키로 펼쳐 기록)
+    # 13.6 세율 시계열 + 13.5 호가 단위 적용 결과가 그대로 영속화된다.
     for in_mem_tg_id, executions in grouped.items():
         if in_mem_tg_id not in tg_pk_map:
             continue
@@ -332,9 +341,20 @@ def _persist_trade_groups_and_executions(
             kind = ex["execution_type"]
             execution_type = TradeExecutionType(kind)
 
-            gross = ex.get("cost") if kind == "BUY" else ex.get("proceeds")
-            if gross is None:
-                gross = ex["price"] * ex["quantity"]
+            # net_amount: BUY는 cost(=gross+fee), SELL은 proceeds(=gross-fee-tax).
+            # ExecutionResult 도입 후 trade_logs에 net_amount 키가 직접 들어옴 —
+            # 호환을 위해 cost/proceeds도 fallback으로 둔다.
+            net = ex.get("net_amount")
+            if net is None:
+                net = ex.get("cost") if kind == "BUY" else ex.get("proceeds")
+            if net is None:
+                net = ex["price"] * ex["quantity"]
+
+            # gross_amount는 ExecutionResult에서 price*quantity (체결가 기준).
+            # fee/tax는 BUY=tax 0 강제, SELL=세율 시계열 13.6 결과.
+            gross = ex.get("gross_amount", ex["price"] * ex["quantity"])
+            fee = ex.get("fee", 0.0)
+            tax = ex.get("tax", 0.0)
 
             session.add(
                 TradeExecution(
@@ -344,10 +364,10 @@ def _persist_trade_groups_and_executions(
                     execution_type=execution_type,
                     price=ex["price"],
                     quantity=ex["quantity"],
-                    gross_amount=ex["price"] * ex["quantity"],
-                    fee=0.0,  # ExecutionModel이 아직 분해 노출 안 함 (Step 6에서 보강)
-                    tax=0.0,
-                    net_amount=gross,
+                    gross_amount=gross,
+                    fee=fee,
+                    tax=tax,
+                    net_amount=net,
                     realized_profit=ex.get("realized_profit"),
                     realized_profit_rate=ex.get("realized_profit_rate"),
                     exit_reason=ex.get("reason") if kind != "BUY" else None,
@@ -363,26 +383,67 @@ def _persist_daily_equity(
     run: BacktestRun,
     daily_equities: list,
 ) -> None:
-    """DailyEquity dataclass list → DB DailyEquity 행."""
-    rows = [
-        DailyEquity(
-            run_id=run.id,
-            date=eq.date,
-            cash=eq.cash,
-            stock_value=eq.stock_value,
-            total_equity=eq.total_equity,
-            drawdown=eq.drawdown,
-            positions_count=eq.positions_count,
-            created_at=_utcnow(),
+    """DailyEquity dataclass list → DB DailyEquity 행.
+
+    daily_return / cumulative_return을 시퀀스 순회로 계산해 영속화한다 (M5).
+
+    단위는 % (퍼센트). drawdown / mdd_pct가 이미 % 단위로 저장되므로
+    동일 컬럼 그룹의 일관성을 위해 백분율을 사용한다 (07번 9절 + 09번 6절).
+
+    공식 (07번 9절 + CLAUDE.md look-ahead bias 무관 — 종가 기준 사후 집계):
+        daily_return[i] = (total_equity[i] - prev_equity) / prev_equity * 100
+            * i=0 : prev_equity = run.initial_cash
+            * i>0 : prev_equity = total_equity[i-1]
+        cumulative_return[i] = (total_equity[i] - initial_cash) / initial_cash * 100
+
+    일관성: ∏(1 + daily_return/100) - 1 ≈ cumulative_return/100.
+    initial_cash가 0이면 비율 계산 불가 → 0 반환 (DB NOT NULL 만족).
+    """
+    initial_cash = float(run.initial_cash) if run.initial_cash else 0.0
+
+    rows: list[DailyEquity] = []
+    prev_equity = initial_cash
+    for eq in daily_equities:
+        daily_ret = (
+            (eq.total_equity - prev_equity) / prev_equity * 100
+            if prev_equity > 0
+            else 0.0
         )
-        for eq in daily_equities
-    ]
+        cum_ret = (
+            (eq.total_equity - initial_cash) / initial_cash * 100
+            if initial_cash > 0
+            else 0.0
+        )
+
+        rows.append(
+            DailyEquity(
+                run_id=run.id,
+                date=eq.date,
+                cash=eq.cash,
+                stock_value=eq.stock_value,
+                total_equity=eq.total_equity,
+                daily_return=daily_ret,
+                cumulative_return=cum_ret,
+                drawdown=eq.drawdown,
+                positions_count=eq.positions_count,
+                created_at=_utcnow(),
+            )
+        )
+        prev_equity = eq.total_equity
+
     session.add_all(rows)
     session.flush()
 
 
 def _persist_cash_events(session: Session, run: BacktestRun, events: list[dict]) -> None:
-    """CashManager 이벤트 영속화 (07번 10절)."""
+    """CashManager 이벤트 영속화 (07번 10절 + 014 비용 분해 매핑).
+
+    CashManager가 ExecutionModel을 거쳐 강제 매도하면 cash_event dict에
+    exec_price/raw_price/gross_amount/fee/tax/net_amount가 채워져 들어온다 —
+    그대로 매핑한다 (013 step 결과). dev/legacy 경로(ExecutionModel 미주입)에서는
+    해당 키들이 없을 수 있으므로 .get()으로 None 허용.
+    sell_amount는 호환을 위해 net_amount과 동일 값 유지.
+    """
     rows = [
         CashEvent(
             run_id=run.id,
@@ -395,6 +456,13 @@ def _persist_cash_events(session: Session, run: BacktestRun, events: list[dict])
             symbol=ev.get("symbol"),
             sell_quantity=ev.get("sell_quantity"),
             sell_amount=ev.get("sell_amount"),
+            # 014 신규 분해 컬럼 — ExecutionModel 분해 결과
+            exec_price=ev.get("exec_price"),
+            raw_price=ev.get("raw_price"),
+            gross_amount=ev.get("gross_amount"),
+            fee=ev.get("fee"),
+            tax=ev.get("tax"),
+            net_amount=ev.get("net_amount"),
             reason=ev.get("reason"),
             created_at=_utcnow(),
         )

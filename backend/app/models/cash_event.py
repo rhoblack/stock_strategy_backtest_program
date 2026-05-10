@@ -36,7 +36,18 @@ class CashEvent(Base):
     action: Mapped[str | None] = mapped_column(String(50), nullable=True)  # partial_sell
     symbol: Mapped[str | None] = mapped_column(String(20), nullable=True)
     sell_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    sell_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sell_amount: Mapped[float | None] = mapped_column(Float, nullable=True)  # 호환: net_amount과 동일
+
+    # 강제 매도 비용 분해 (014 step / 리뷰 011 C2 영속화).
+    # ExecutionModel을 거친 강제 매도는 fee/tax가 분해되어 들어옴 — 그대로 저장.
+    # CashManager에 ExecutionModel이 주입되지 않은 dev/legacy 경로면 fee/tax=0, gross=net.
+    exec_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    raw_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gross_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fee: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tax: Mapped[float | None] = mapped_column(Float, nullable=True)
+    net_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
