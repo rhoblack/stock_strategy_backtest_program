@@ -50,7 +50,8 @@
 | 7 | CSV/ZIP Export | ✅ 완료 |
 | 8 | 리뷰 011 Critical 후속 (Wave A·B·C = 010~014 완료, Critical 5/5 해소) | ✅ 완료 (5 step) |
 | 9 | 정확성 잔존(015·017) + 시장데이터 1단계(016·018·019) — test-engineer ship-go | ✅ 완료 (5 step) |
-| 10 | BacktestEngine 복수 종목 + priority (외부 CR-003) | 🔄 다음 |
+| 10 | BacktestEngine 복수 종목 + priority + 한도 + event_log + 강제매도 (외부 CR-003) — test-engineer ship-go | ✅ 완료 (4 step) |
+| 11 | 데이터 파이프라인 본체 (collectors / processors / pykrx / 시가총액 시계열) | 🔄 다음 |
 
 **현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 **Critical 5/5 모두 해소** + 외부 4.7 일괄 — 신뢰성 기반 정합화 완료. 다음 단계는 시장데이터/복수종목 트랙)
 
@@ -89,6 +90,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [phase10-test-engineer-verification](./2026-05-10-phase10-test-engineer-verification.md) | 10 | test-engineer | ✅ | **Phase 10 완료 검증 🟢 ship-go**: 통합 회귀 616 PASS / 13.17 모든 항목 통과 / 골든 9지표 유지 / e2e 시나리오 4건 신규 |
 | 2026-05-10 | [023-event-log-and-forced-sell](./2026-05-10-023-event-log-and-forced-sell.md) | 10 | backtest-engine-developer | ✅ | **04-n·o + 13-p·q 해소 / Phase 10 마지막 step**: event_log 8종 사유 + 상한가/하한가 차단(default 보수) + 상장폐지 강제 매도(delisting_dates) + 25건 신규 / 612 PASS — **58% (test-engineer 검증 대기)** |
 | 2026-05-10 | [022-position-limits](./2026-05-10-022-position-limits.md) | 10 | backtest-engine-developer | ✅ | **04-l + 04-m 해소**: _apply_position_limits + max_positions/max_daily_entries(사전) + daily_buy_budget(매수 루프 cumulative 동적) + 22건 신규 / 587 PASS / 골든 frozen — 56% |
 | 2026-05-10 | [021-priority-and-random-seed](./2026-05-10-021-priority-and-random-seed.md) | 10 | backtest-engine-developer | ✅ | **04-k + 13-n + 13-o 해소 (M7 잔존 해소)**: priority 4종(none/trading_value_desc/market_cap_desc/random) + symbol_asc tie-breaker + random_seed 실사용 + None+random ValueError + 14건 신규 / 565 PASS / 골든 frozen — 55% |
@@ -214,21 +216,20 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 4. ✅ ExecutionResult dataclass + cash_manager의 ExecutionModel 주입 (C2 + H1 + M2 + M4) — 2026-05-10-013 (backtest-engine-developer)
 5. ✅ TradeExecution.fee/tax + DailyEquity.daily/cumulative + cash_events 분해 영속화 + alembic 마이그레이션 (M5 + 외부 4.7) — 2026-05-10-014 (backend-api-engineer)
 
-## Phase 9 완료 ✅ (5/5 step + test-engineer 🟢 ship-go)
+## Phase 10 완료 ✅ (4/4 step + test-engineer 🟢 ship-go)
 
 ### 완료 step
-- ✅ 015 체결일 정합성 (signal_date vs execution_date)
-- ✅ 016 시장데이터 3종 모델 + repositories 스켈레톤
-- ✅ 017 signal_date 영속화 (TradeExecution + alembic + service)
-- ✅ 018 LocalCsvProvider + PriceLoader (016b)
-- ✅ 019 UniverseSelector + 06번 §8 공통 필터 + 13.15 look-ahead 차단
-- ✅ test-engineer 검증: 536 passed / 1 fail(016 head 가드, 알려진 무관) / Phase 1 골든 9지표 유지 / e2e 5건 신규
+- ✅ 020 BacktestEngine 복수 종목 (dict[symbol, df] | df 자동 wrap + held_at_open_set 가드)
+- ✅ 021 priority 4종 + symbol_asc tie-breaker + random_seed 실사용 (M7 해소)
+- ✅ 022 _apply_position_limits + max_positions/max_daily_entries/daily_buy_budget
+- ✅ 023 event_log 8종 사유 + 상한가/하한가 차단 + 상장폐지 강제 매도
+- ✅ test-engineer 검증: 616 passed / 1 fail(016 head 가드) / Phase 1 골든 9지표 유지 / e2e 4건 신규
 
-## Phase 10 다음 진입 — BacktestEngine 복수 종목 + priority
+## Phase 11 다음 진입 — 데이터 파이프라인 본체
 
-⏭ 다음: step 020 — BacktestEngine을 dict[symbol, DataFrame] 입력으로 확장 (backtest-engine-developer, 외부 CR-003)
+⏭ 다음: step 024 — data_pipeline 패키지 + collectors/processors/jobs 골격 (market-data-engineer)
 
-Phase 10~13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
+Phase 11~13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 
 ---
 
