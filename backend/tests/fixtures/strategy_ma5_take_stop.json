@@ -1,0 +1,26 @@
+{
+  "entry": {
+    "logic": "AND",
+    "conditions": [
+      {
+        "type": "price_vs_ma",
+        "ma_period": 5,
+        "operator": ">"
+      }
+    ]
+  },
+  "exit_position": {
+    "logic": "OR",
+    "conditions": [
+      {
+        "type": "take_profit",
+        "percent": 5.0,
+        "trigger": "intraday_high"
+      },
+      {
+        "type": "stop_loss",
+        "percent": 3.0
+      }
+    ]
+  }
+}

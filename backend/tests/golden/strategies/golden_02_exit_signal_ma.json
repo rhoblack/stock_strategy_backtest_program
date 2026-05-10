@@ -1,0 +1,23 @@
+{
+  "_description": "golden_02: MA(5) entry + exit_signal(price < MA). seed=7, n=60일 합성 데이터. 지표 매도만.",
+  "entry": {
+    "logic": "AND",
+    "conditions": [
+      {
+        "type": "price_vs_ma",
+        "ma_period": 5,
+        "operator": ">"
+      }
+    ]
+  },
+  "exit_signal": {
+    "logic": "AND",
+    "conditions": [
+      {
+        "type": "price_vs_ma",
+        "ma_period": 5,
+        "operator": "<"
+      }
+    ]
+  }
+}

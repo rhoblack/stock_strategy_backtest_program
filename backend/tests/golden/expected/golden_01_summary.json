@@ -1,0 +1,20 @@
+{
+  "_description": "golden_01 기대 결과. seed=42, n=90. 변경 시 PR 본문에 diff 첨부 필수 (12번 §15.4).",
+  "_last_updated": "2026-05-11",
+  "_tolerance": "abs=1.0 (KRW), abs=0.001 (pct)",
+  "initial_cash": 10000000.0,
+  "final_equity": 10188570.0,
+  "total_return_pct": 1.8857,
+  "mdd_pct": -4.9032,
+  "trade_count": 8,
+  "open_position_count": 1,
+  "win_rate": 37.5,
+  "avg_holding_days": 6.5,
+  "profit_factor": 1.2252,
+  "daily_equity_length": 90,
+  "first_buy_price": 9760,
+  "first_buy_date": "2024-01-13",
+  "first_buy_signal_date": "2024-01-12",
+  "total_buy_count": 9,
+  "total_sell_count": 8
+}

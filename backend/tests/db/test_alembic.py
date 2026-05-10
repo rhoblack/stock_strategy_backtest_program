@@ -111,3 +111,95 @@ def test_alembic_creates_critical_indexes(temp_db_url):
         assert "ix_backtest_runs_status" in all_indexes.get("backtest_runs", set())
     finally:
         engine.dispose()
+
+
+# ============================================================================
+# step 038 추가: alembic 환경 검증 (revision 이력 정합성 + head 상태)
+# ============================================================================
+
+
+def test_alembic_revision_chain_has_no_gaps(temp_db_url):
+    """alembic upgrade head 후 revision 이력이 연속 체인을 형성하는지 검증.
+
+    누락된 revision이 있으면 head에 도달하지 못하거나 중간 스킵이 발생한다.
+    upgrade head가 성공하면 head revision이 alembic_version에 기록됨.
+    """
+    from sqlalchemy import text
+
+    cfg = _alembic_config(temp_db_url)
+    command.upgrade(cfg, "head")
+
+    engine = create_engine(temp_db_url)
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT version_num FROM alembic_version"))
+            rows = result.fetchall()
+
+        # alembic_version 테이블에 정확히 1개의 head revision이 있어야 함
+        assert len(rows) == 1, (
+            f"alembic_version에 head revision이 1개이어야 함: {rows}"
+        )
+
+        head_revision = rows[0][0]
+        # head revision이 비어있지 않아야 함
+        assert head_revision and len(head_revision) > 0, (
+            f"head revision이 유효하지 않음: {head_revision!r}"
+        )
+    finally:
+        engine.dispose()
+
+
+def test_alembic_upgrade_head_application_tables_complete(temp_db_url):
+    """upgrade head 후 application 테이블 전체가 올바른 스키마로 존재하는지 검증.
+
+    영속화 스냅샷 필수 컬럼 (CLAUDE.md #9):
+      backtest_runs: strategy_snapshot_json, random_seed, priority_method,
+                     priority_tie_breaker, tick_rounding, use_adjusted_price
+    """
+    cfg = _alembic_config(temp_db_url)
+    command.upgrade(cfg, "head")
+
+    engine = create_engine(temp_db_url)
+    try:
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names()) - {"alembic_version"}
+
+        # application 핵심 테이블 존재 확인
+        required_app_tables = {
+            "users",
+            "strategies",
+            "strategy_versions",
+            "backtest_runs",
+            "backtest_results",
+            "trade_groups",
+            "trade_executions",
+            "daily_equity",
+        }
+        missing_tables = required_app_tables - tables
+        assert not missing_tables, (
+            f"필수 application 테이블 누락: {missing_tables}"
+        )
+
+        # backtest_runs 영속화 스냅샷 필수 컬럼 (CLAUDE.md #9)
+        br_cols = {c["name"] for c in inspector.get_columns("backtest_runs")}
+        snapshot_cols = {
+            "strategy_snapshot_json",
+            "random_seed",
+            "priority_method",
+            "priority_tie_breaker",
+        }
+        missing_snapshot = snapshot_cols - br_cols
+        assert not missing_snapshot, (
+            f"backtest_runs 영속화 스냅샷 컬럼 누락: {missing_snapshot}"
+        )
+
+        # trade_executions 비용 분해 컬럼 (fee/tax 분리, 13.6)
+        # 실제 컬럼명: fee, tax (fee_amount/tax_amount가 아님)
+        te_cols = {c["name"] for c in inspector.get_columns("trade_executions")}
+        cost_cols = {"gross_amount", "fee", "tax", "net_amount"}
+        missing_cost = cost_cols - te_cols
+        assert not missing_cost, (
+            f"trade_executions 비용 분해 컬럼 누락: {missing_cost}"
+        )
+    finally:
+        engine.dispose()

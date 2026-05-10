@@ -1,0 +1,27 @@
+{
+  "_description": "golden_01: MA(5) entry + take_profit=5% + stop_loss=3%. seed=42, n=90일 합성 데이터",
+  "entry": {
+    "logic": "AND",
+    "conditions": [
+      {
+        "type": "price_vs_ma",
+        "ma_period": 5,
+        "operator": ">"
+      }
+    ]
+  },
+  "exit_position": {
+    "logic": "OR",
+    "conditions": [
+      {
+        "type": "take_profit",
+        "percent": 5.0,
+        "trigger": "intraday_high"
+      },
+      {
+        "type": "stop_loss",
+        "percent": 3.0
+      }
+    ]
+  }
+}

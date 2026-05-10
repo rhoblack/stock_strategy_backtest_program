@@ -1,0 +1,36 @@
+{
+  "_description": "golden_03: MA(5)+RSI(14)<=70 entry, take=7%/stop=3%/max_holding=10. seed=123, n=120일. 결정론 10회 반복 검증",
+  "entry": {
+    "logic": "AND",
+    "conditions": [
+      {
+        "type": "price_vs_ma",
+        "ma_period": 5,
+        "operator": ">"
+      },
+      {
+        "type": "rsi_level",
+        "period": 14,
+        "operator": "<=",
+        "value": 70
+      }
+    ]
+  },
+  "exit_position": {
+    "logic": "OR",
+    "conditions": [
+      {
+        "type": "take_profit",
+        "percent": 7.0
+      },
+      {
+        "type": "stop_loss",
+        "percent": 3.0
+      },
+      {
+        "type": "max_holding_days",
+        "days": 10
+      }
+    ]
+  }
+}
