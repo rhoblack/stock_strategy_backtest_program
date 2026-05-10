@@ -273,3 +273,48 @@ def test_cash_manager_uses_execution_model_via_spy():
     assert len(call_log) == 1
     # raw_price가 제대로 전달됨
     assert call_log[0][3] == 10_000
+
+
+# ========================================================================
+# 015) CashManager 강제 매도는 today 즉시 체결 — signal_date == execution_date
+# ========================================================================
+
+
+def test_forced_sell_records_signal_date_equals_execution_date():
+    """CashManager 강제 매도(cash_shortage_partial_sell)는 그 시점에 즉시 체결.
+
+    BacktestEngine이 next_open 매수 직전 부족분을 채우려 호출하므로 signal_date /
+    execution_date / trade_logs.date 모두 today(=on_date)로 동일해야 한다.
+    015 정합성 수정 후에도 cash_manager 경로는 변경되지 않음을 회귀 보증.
+    """
+    p = _portfolio_with_two_positions()
+    p.update_market_price("A", 12_000)
+    p.update_market_price("B", 9_000)
+    em = ExecutionModel(fee_rate=0.001, tax_rate=0.0018, slippage=0.001)
+    cm = CashManager(
+        {
+            "enabled": True,
+            "shortage_rule": {
+                "action": {"sell_fraction": 0.4},
+                "target_selection": {"method": "lowest_return"},
+            },
+        },
+        execution_model=em,
+    )
+    on_date = date(2024, 6, 1)
+    cm.handle_shortage(
+        p,
+        required_cash=10_000,
+        on_date=on_date,
+        price_provider=lambda s, _d: 9_000 if s == "B" else 12_000,
+    )
+
+    sell_logs = [
+        log for log in p.trade_logs if log.get("reason") == "cash_shortage_partial_sell"
+    ]
+    assert len(sell_logs) == 1
+    log = sell_logs[0]
+    # 강제 매도는 즉시 체결 — signal_date == execution_date == on_date
+    assert log["execution_date"] == on_date
+    assert log["signal_date"] == on_date
+    assert log["date"] == on_date

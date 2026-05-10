@@ -122,7 +122,15 @@ def test_golden_01_ma_cross_take_profit_stop_loss():
     df = _build_synthetic_series(seed=42, n=90)
     result, metrics = _run(_GOLDEN_01_STRATEGY, df)
 
-    # === Frozen expected (1차 실행 후 고정) ===
+    # === Frozen expected (1차 실행 후 고정 / 015에서 avg_holding_days 갱신) ===
+    # 015 (signal_date vs execution_date 분리) 영향:
+    #   - final_equity / total_return / mdd / trade_count / win_rate / profit_factor:
+    #     체결가는 그대로 next_open이라 자산 차이 없음 → 변경 없음.
+    #   - avg_holding_days: 7.5 → 6.5
+    #     entry는 next_open(=다음 거래일) 체결이라 entry_date가 1일 미뤄지지만,
+    #     exit_position(intraday take/stop)은 당일 체결이라 exit_date는 그대로.
+    #     실제 보유일수가 1일 줄어드는 게 정합 — CLAUDE.md look-ahead 체크리스트
+    #     마지막 줄("신호일 종가로 신호, 다음날 시가로 체결") 의미 그대로.
     assert metrics["initial_cash"] == 10_000_000.0
     assert metrics["final_equity"] == pytest.approx(10_188_570.0, abs=1.0)
     assert metrics["total_return_pct"] == pytest.approx(1.8857, abs=0.001)
@@ -130,7 +138,7 @@ def test_golden_01_ma_cross_take_profit_stop_loss():
     assert metrics["trade_count"] == 8
     assert metrics["open_position_count"] == 1
     assert metrics["win_rate"] == pytest.approx(37.5, abs=0.01)
-    assert metrics["avg_holding_days"] == pytest.approx(7.5, abs=0.01)
+    assert metrics["avg_holding_days"] == pytest.approx(6.5, abs=0.01)
     assert metrics["profit_factor"] == pytest.approx(1.2252, abs=0.001)
 
     # daily_equity 길이
@@ -149,8 +157,14 @@ def test_golden_01_specific_first_trade_match():
     assert len(sells) == 8
 
     first_buy = buys[0]
+    # 015: first_buy["date"]는 execution_date (체결일).
+    #   이전: 2024-01-12 (signal_date를 잘못 기록).
+    #   이후: 2024-01-13 (next_date = 다음 거래일 시가 체결).
+    # 가격 9_760은 2024-01-13의 시가로 변경 없음.
     assert first_buy["price"] == 9_760
-    assert first_buy["date"] == date(2024, 1, 12)
+    assert first_buy["date"] == date(2024, 1, 13)
+    assert first_buy["execution_date"] == date(2024, 1, 13)
+    assert first_buy["signal_date"] == date(2024, 1, 12)
 
 
 def test_golden_01_determinism_two_runs():

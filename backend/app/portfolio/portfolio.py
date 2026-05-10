@@ -55,11 +55,25 @@ class Portfolio:
         allow_pyramiding: bool = False,
         cost_override: float | None = None,
         execution: ExecutionResult | None = None,
+        signal_date: date_type | None = None,
     ) -> int:
         """매수 처리. trade_group_id 반환.
 
         Parameters
         ----------
+        on_date : date
+            **체결일 (execution_date)**. TradeGroup.entry_date / trade_logs.date /
+            CSV·차트의 거래 마커는 모두 이 값을 사용한다. 정확성 정책 13.15 +
+            CLAUDE.md look-ahead 체크리스트("신호일 종가로 신호, 다음날 시가로
+            체결")에 따라, BacktestEngine은 next_open 매수에 대해 next_date(=
+            다음 거래일)를 전달한다. cash_manager가 호출하는 강제 매도/매수는
+            그 시점에 즉시 체결되므로 signal_date == execution_date로 today를
+            그대로 전달한다.
+        signal_date : date | None
+            신호 발생일 (선택). next_open 체결처럼 신호일과 체결일이 다른 경우
+            호출자가 today를 전달. trade_logs.signal_date 키로 기록되며 CSV/
+            차트가 신호 발생 시점을 별도로 표시할 때 사용한다. None이면
+            on_date(=execution_date)와 동일하다고 간주한다.
         execution : ExecutionResult | None
             ExecutionModel.calculate_buy_cost 반환값. 우선 적용.
             fee/tax/net을 trade_logs에 기록한다.
@@ -134,7 +148,12 @@ class Portfolio:
 
         self.trade_logs.append(
             {
+                # date == execution_date (체결일). 기존 services 매핑 호환.
                 "date": on_date,
+                # 015 추가 — signal_date / execution_date 명시적 분리.
+                # services 영속화 매핑 추가는 후속 step.
+                "signal_date": signal_date if signal_date is not None else on_date,
+                "execution_date": on_date,
                 "symbol": symbol,
                 "trade_group_id": trade_group_id,
                 "execution_type": "BUY",
@@ -165,11 +184,21 @@ class Portfolio:
         reason: str,
         proceeds_override: float | None = None,
         execution: ExecutionResult | None = None,
+        signal_date: date_type | None = None,
     ) -> dict:
         """지정 trade_group의 일부 또는 전량 매도.
 
         Parameters
         ----------
+        on_date : date
+            **체결일 (execution_date)**. trade_logs.date / CSV·차트 마커가
+            사용. exit_signal로 인한 next_open 매도는 next_date를, 갭/일중
+            stop·take/trailing/max_holding/cash_manager 강제 매도는 today를
+            전달한다 (정확성 정책 13.3 + CLAUDE.md look-ahead 체크리스트).
+        signal_date : date | None
+            신호 발생일 (선택). exit_signal next_open 매도는 today를 전달.
+            on_date와 다른 경우 trade_logs.signal_date에 기록된다. None이면
+            on_date(=execution_date)와 동일하다고 간주.
         execution : ExecutionResult | None
             ExecutionModel.calculate_sell_proceeds 반환값. 우선 적용.
             fee/tax/net이 trade_logs에 기록되며, realized_profit/_rate 계산도
@@ -242,7 +271,11 @@ class Portfolio:
         is_partial = sell_qty < target.entry_quantity or target.remaining_quantity > 0
 
         log_entry = {
+            # date == execution_date (체결일). 기존 services 매핑 호환.
             "date": on_date,
+            # 015 추가 — signal_date / execution_date 명시적 분리.
+            "signal_date": signal_date if signal_date is not None else on_date,
+            "execution_date": on_date,
             "symbol": symbol,
             "trade_group_id": trade_group_id,
             "execution_type": "PARTIAL_SELL" if is_partial else "SELL",
@@ -282,11 +315,17 @@ class Portfolio:
         reason: str,
         proceeds_override: float | None = None,
         execution: ExecutionResult | None = None,
+        signal_date: date_type | None = None,
     ) -> list[dict]:
         """종목 단위 매도. trade_group을 entry_date 오름차순으로 순회 (FIFO).
 
         Parameters
         ----------
+        on_date : date
+            **체결일 (execution_date)**. sell_trade_group의 동명 인자에 그대로
+            전달.
+        signal_date : date | None
+            신호 발생일 (선택). exit_signal next_open 매도는 today를 전달.
         execution : ExecutionResult | None
             ExecutionResult.quantity == quantity여야 함. 비례 분배로 각
             trade_group에 fee/tax/net을 나눠서 기록한다.
@@ -351,6 +390,7 @@ class Portfolio:
                 reason=reason,
                 proceeds_override=tg_proceeds,
                 execution=tg_execution,
+                signal_date=signal_date,
             )
             logs.append(log)
             remaining -= take

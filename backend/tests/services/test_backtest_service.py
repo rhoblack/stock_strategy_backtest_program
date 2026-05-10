@@ -546,9 +546,14 @@ def test_cash_events_persist_legacy_no_breakdown(db_session, user, strategy):
 
 
 def test_golden_fixture_regression_cost_zero(db_session, user, strategy):
-    """Phase 1 골든 fixture 9지표가 014 변경 후에도 동일.
+    """Phase 1 골든 fixture 지표가 014/015 변경 후에도 동일.
 
-    fee=0/tax=0/slippage=0 default로 실행 시 final_equity 등 9지표가 frozen 값과 일치.
+    fee=0/tax=0/slippage=0 default로 실행 시 final_equity / total_return / mdd /
+    trade_count / win_rate / profit_factor가 frozen 값과 일치.
+
+    015 (signal_date vs execution_date 분리): avg_holding_days만 7.5 → 6.5로 갱신.
+    entry는 next_open(다음 거래일) 체결로 entry_date가 1일 미뤄지지만 intraday
+    take/stop은 당일 체결이라 exit_date는 그대로 → 실제 보유일수 1일 단축이 정합.
     """
     df = _build_synthetic_series(seed=42, n=90)
 
@@ -574,7 +579,7 @@ def test_golden_fixture_regression_cost_zero(db_session, user, strategy):
     assert result.mdd_pct == pytest.approx(-4.9032, abs=0.01)
     assert result.trade_count == 8
     assert result.win_rate == pytest.approx(37.5, abs=0.01)
-    assert result.avg_holding_days == pytest.approx(7.5, abs=0.01)
+    assert result.avg_holding_days == pytest.approx(6.5, abs=0.01)
     assert result.profit_factor == pytest.approx(1.2252, abs=0.001)
 
     # fee=tax=0이므로 모든 TradeExecution.fee=0, tax=0

@@ -1,10 +1,19 @@
 """BacktestEngine — 단일 종목 백테스트 오케스트레이터.
 
 설계서 04번 5~6절 + 정확성 정책 13.3 (일중 익절/손절) / 13.4 (갭/거래정지) /
+13.15 (look-ahead bias 체크리스트 — "신호일 종가로 신호, 다음날 시가로 체결") /
 13.16 (이벤트 우선순위) / 13.3.5 + 13.15 (peak_price 전일까지 high) /
 03번 §4 + CLAUDE.md 핵심원칙 #2 (ConditionRegistry 라우팅 통일).
 
 Phase 1 단일 종목 한정. universe / priority / cash_management는 후속 단계.
+
+신호일(signal_date) vs 체결일(execution_date) 분리 — 015 정합성 수정:
+    next_open 체결 경로(신규 매수, exit_signal 매도)는 신호일과 체결일이
+    하루 다르다. trade_logs / TradeGroup.entry_date / CSV·차트 마커가
+    실제 체결일을 기록하도록 portfolio.buy/sell_*에 execution_date를 전달
+    하고, signal_date는 추가 파라미터로 보존해 후속 영속화/표시 단계에서
+    사용한다. 갭/일중 stop·take/trailing/max_holding/cash_manager 강제
+    매도는 today 즉시 체결이므로 signal_date == execution_date == today.
 
 흐름 (정확성 정책 13.16 우선순위 적용):
     1. 거래정지 (volume=0) → skip
@@ -12,10 +21,17 @@ Phase 1 단일 종목 한정. universe / priority / cash_management는 후속 �
         a. update_market_price (current_price만 갱신, peak는 미변경)
         b. exit_position 평가 — 갭 다운/업 분기 후 ConditionRegistry로 라우팅
            (정렬: stop_loss → take_profit → trailing_stop → max_holding_days)
-        c. exit_signal True → 다음 거래일 시가 매도 (FIFO)
+           → today 체결 (execution_date == today)
+        c. exit_signal True + next_date 존재 → 다음 거래일 시가 매도 (FIFO)
+           → execution_date = next_date, signal_date = today
         d. update_peak_price (그날 high를 peak에 반영, 다음날부터 적용)
-    3. 미보유 + final_entry_signal True → 다음 거래일 시가 매수
+    3. 미보유 + final_entry_signal True + next_date 존재 → 다음 거래일 시가 매수
+       → execution_date = next_date, signal_date = today
     4. 일별 자산 기록
+
+마지막 봉(next_date == NaN)에서는 next_open 체결이 불가능하므로 신규 매수 /
+exit_signal 매도가 모두 skip된다. exit_position(갭/일중/trailing/max_holding)은
+당일 체결이므로 마지막 봉에서도 정상 평가된다.
 """
 
 from __future__ import annotations
@@ -73,8 +89,13 @@ class BacktestEngine:
             adj_open, adj_high, adj_low, adj_close, adj_volume
             next_open, next_close (PriceLoader에서 미리 채움)
             date 또는 인덱스가 datetime
+
+        next_date 컬럼이 없으면 본 메서드가 채운다 (date만 1칸 shift; 가격/조건은
+        보지 않음 — look-ahead 차단). 마지막 row의 next_date는 NaT가 되어
+        next_open 체결(신규 매수, exit_signal 매도)이 자동으로 skip된다.
         """
         df = self.strategy_engine.generate_signals(df)
+        df = self._ensure_next_date(df)
         symbol = self.config.symbol
         exit_position_rules = self._get_exit_position_rules()
 
@@ -124,14 +145,22 @@ class BacktestEngine:
                     continue
 
                 # 2. exit_signal 평가 → 다음 거래일 시가 매도
-                if bool(row["exit_signal"]) and not pd.isna(row.get("next_open")):
+                #    signal_date = today, execution_date = next_date.
+                #    next_date 또는 next_open이 NaT/NaN(마지막 봉 등)이면 skip.
+                next_date = self._next_date_or_none(row)
+                if (
+                    bool(row["exit_signal"])
+                    and not pd.isna(row.get("next_open"))
+                    and next_date is not None
+                ):
                     self._process_sell_at_price(
                         symbol=symbol,
                         price=float(row["next_open"]),
                         quantity=self.portfolio.positions[symbol].quantity,
-                        on_date=today,
+                        on_date=next_date,
                         reason="exit_signal",
                         result=result,
+                        signal_date=today,
                     )
 
                 # 3. 평가 종료 후 그날 high를 peak에 반영 (다음날부터 trailing 적용)
@@ -139,7 +168,12 @@ class BacktestEngine:
                     self.portfolio.update_peak_price(symbol, float(row["adj_high"]))
 
             # 4. 미보유 + final_entry_signal → 다음 시가 매수
-            elif bool(row["final_entry_signal"]) and not pd.isna(row.get("next_open")):
+            #    next_date 없으면(마지막 봉) 매수 skip.
+            elif (
+                bool(row["final_entry_signal"])
+                and not pd.isna(row.get("next_open"))
+                and self._next_date_or_none(row) is not None
+            ):
                 self._maybe_buy(symbol, row, today, result)
 
             peak_equity = max(peak_equity, self.portfolio.total_equity())
@@ -160,6 +194,44 @@ class BacktestEngine:
         # DatetimeIndex
         ts = row.name
         return ts.date() if hasattr(ts, "date") else ts
+
+    def _ensure_next_date(self, df: pd.DataFrame) -> pd.DataFrame:
+        """df에 next_date 컬럼이 없으면 채운다 (date만 1칸 shift; look-ahead 차단).
+
+        - 'date' 컬럼이 있으면 `df["date"].shift(-1)`를 사용.
+        - 없으면 DatetimeIndex를 가정하고 인덱스를 1칸 shift.
+        - 마지막 row의 next_date는 NaT — _next_date_or_none이 None으로 변환.
+
+        next row의 가격(open/close)이나 신호는 절대 보지 않는다 — execution
+        시점 결정에만 사용. PriceLoader가 14번 문서에 맞춰 next_date를 미리
+        채우는 환경에서는 본 메서드가 no-op로 동작한다.
+        """
+        if "next_date" in df.columns:
+            return df
+        df = df.copy()
+        if "date" in df.columns:
+            df["next_date"] = df["date"].shift(-1)
+        else:
+            df["next_date"] = pd.Series(df.index, index=df.index).shift(-1)
+        return df
+
+    def _next_date_or_none(self, row: pd.Series):
+        """row["next_date"]를 date로 정규화. NaT/NaN이면 None.
+
+        pandas Timestamp는 .date()로 변환, datetime.date는 그대로 반환.
+        date 타입은 .date()를 가지지 않으므로 hasattr만으로 충분히 분기됨.
+        """
+        if "next_date" not in row.index:
+            return None
+        value = row["next_date"]
+        if pd.isna(value):
+            return None
+        if isinstance(value, pd.Timestamp):
+            return value.date()
+        if hasattr(value, "date") and callable(value.date):
+            # datetime.datetime 등
+            return value.date()
+        return value
 
     def _get_exit_position_rules(self) -> list[dict]:
         section = self.strategy_engine.strategy.get("exit_position")
@@ -280,9 +352,18 @@ class BacktestEngine:
         today,
         result: BacktestResult,
     ) -> None:
-        """매수 시도. 갭 초과 / 거래정지 / 예수금 부족(CashManager 시도) 시 skip."""
+        """매수 시도. 갭 초과 / 거래정지 / 예수금 부족(CashManager 시도) 시 skip.
+
+        signal_date = today (신호 발생일), execution_date = next_date
+        (다음 거래일). cash_manager 강제 매도는 today 즉시 체결이므로 today를
+        그대로 전달한다.
+        """
         next_open = float(row["next_open"])
         prev_close = float(row["adj_close"])
+        execution_date = self._next_date_or_none(row)
+        if execution_date is None:
+            # 호출자가 이미 차단하지만 방어적으로 한 번 더 체크.
+            return
 
         # 다음 거래일 거래정지 체크 (정확성 정책 13.4.2)
         next_volume = row.get("next_volume")
@@ -294,7 +375,7 @@ class BacktestEngine:
         if gap_pct > self.config.max_gap_pct_for_entry:
             return
 
-        # 사전 fund 확보 (CashManager 옵션)
+        # 사전 fund 확보 (CashManager 옵션) — 강제 매도는 today 즉시 체결.
         if self.cash_manager is not None and self.cash_manager.enabled:
             # 추정 비용으로 미리 cash 확보 시도 — ExecutionResult.net_amount 사용
             est_price = self.execution_model.apply_slippage_and_tick(
@@ -335,9 +416,10 @@ class BacktestEngine:
             symbol=symbol,
             price=exec_price,
             quantity=quantity,
-            on_date=today,
+            on_date=execution_date,
             reason="entry_signal",
             execution=execution,
+            signal_date=today,
         )
 
     def _process_sell_at_price(
@@ -348,11 +430,23 @@ class BacktestEngine:
         on_date,
         reason: str,
         result: BacktestResult,
+        signal_date=None,
     ) -> None:
         """price를 슬리피지/호가/세금 처리한 뒤 FIFO로 매도.
 
+        Parameters
+        ----------
+        on_date
+            **체결일 (execution_date)**. exit_signal next_open 매도는 next_date,
+            갭/일중/trailing/max_holding 등 당일 체결 경로는 today.
+        signal_date
+            신호 발생일. exit_signal 경로에서만 today를 전달, 나머지는 None
+            (= execution_date와 동일).
+
         ExecutionResult를 sell_symbol_fifo에 전달하여 fee/tax/net이 분해된 채로
-        Portfolio.trade_logs에 기록되게 한다 (리뷰 011 H1 + M2 + M4).
+        Portfolio.trade_logs에 기록되게 한다 (리뷰 011 H1 + M2 + M4). 거래세
+        (시계열) 적용은 execution_date 기준 — 매도 체결일이 속하는 세율을 사용
+        (정확성 정책 13.6).
         """
         # 갭 손절/익절은 시가 그대로 체결 (이미 정확성 정책에 따라 호출자가 결정)
         # 슬리피지는 모든 매도에 보수적으로 적용
@@ -369,6 +463,7 @@ class BacktestEngine:
             on_date=on_date,
             reason=reason,
             execution=execution,
+            signal_date=signal_date,
         )
 
     def _record_daily_equity(

@@ -600,3 +600,199 @@ def test_peak_updated_after_exit_evaluation_each_day():
     assert pos.peak_price == 120, (
         f"peak가 그날 high(120)로 평가 후 갱신되어야 한다: 실제 {pos.peak_price}"
     )
+
+
+# ========================================================================
+# 015) signal_date vs execution_date 분리 — next_open 체결 정합성
+# ========================================================================
+
+
+def test_buy_execution_date_is_next_trading_day_not_signal_date():
+    """매수: signal_date == today, execution_date == next_date.
+
+    BUY trade_log의 date / execution_date는 next_date(=다음 거래일),
+    signal_date는 today(=신호 발생일)여야 한다 (CLAUDE.md look-ahead 체크리스트
+    마지막 줄 — 신호일 종가로 신호, 다음날 시가로 체결).
+    """
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15)]
+    df = _make_df(dates, closes=[100, 100, 110, 110])
+    engine = _make_engine(_trivial_entry_strategy())
+    result = engine.run(df)
+
+    buys = [ex for ex in result.trade_executions if ex["execution_type"] == "BUY"]
+    assert len(buys) == 1
+    buy = buys[0]
+    # Day2(2024-01-12) 종가에서 entry True → Day3(2024-01-15) 시가 체결
+    assert buy["signal_date"] == date(2024, 1, 12), buy
+    assert buy["execution_date"] == date(2024, 1, 15), buy
+    assert buy["date"] == buy["execution_date"]
+    assert buy["signal_date"] != buy["execution_date"]
+
+
+def test_exit_signal_sell_execution_date_is_next_trading_day():
+    """exit_signal 매도: signal_date == today, execution_date == next_date."""
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15, 16)]
+    # Day0~1: 가격 상승 → Day2 매수
+    # Day3 (15): 가격 하락 → exit_signal True (시그널)
+    # Day4 (16): 시가 매도 (체결)
+    df = _make_df(dates, closes=[100, 110, 110, 95, 95])
+    engine = _make_engine(_trivial_entry_strategy(exit_signal_below_ma=True))
+    result = engine.run(df)
+
+    sells = [
+        ex
+        for ex in result.trade_executions
+        if "SELL" in ex["execution_type"] and ex["reason"] == "exit_signal"
+    ]
+    assert len(sells) >= 1
+    sell = sells[0]
+    assert sell["signal_date"] == date(2024, 1, 15), sell
+    assert sell["execution_date"] == date(2024, 1, 16), sell
+    assert sell["date"] == sell["execution_date"]
+
+
+def test_intraday_take_profit_signal_equals_execution_date():
+    """일중 익절: 당일 체결 — signal_date == execution_date == today."""
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15)]
+    df = _make_df(
+        dates,
+        closes=[100, 110, 110, 125],
+        opens=[100, 110, 110, 115],
+        highs=[100, 110, 110, 130],
+        lows=[100, 110, 110, 113],
+    )
+    engine = _make_engine(_trivial_entry_strategy(take_profit=7.0))
+    result = engine.run(df)
+
+    sells = [ex for ex in result.trade_executions if "SELL" in ex["execution_type"]]
+    assert len(sells) == 1
+    sell = sells[0]
+    assert sell["reason"] == "take_profit"
+    # 당일 체결 — signal_date == execution_date
+    assert sell["signal_date"] == sell["execution_date"]
+    assert sell["execution_date"] == date(2024, 1, 15)
+
+
+def test_gap_down_stop_loss_signal_equals_execution_date():
+    """갭 다운 손절: 당일 시가 체결 — signal_date == execution_date == today."""
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15)]
+    df = _make_df(
+        dates,
+        closes=[100, 110, 110, 102],
+        opens=[100, 110, 110, 100],
+        highs=[100, 110, 110, 105],
+        lows=[100, 110, 110, 95],
+    )
+    engine = _make_engine(_trivial_entry_strategy(stop_loss=3.0))
+    result = engine.run(df)
+
+    sells = [ex for ex in result.trade_executions if "SELL" in ex["execution_type"]]
+    assert len(sells) == 1
+    sell = sells[0]
+    assert sell["reason"] == "gap_down_stop_loss"
+    assert sell["signal_date"] == sell["execution_date"]
+    assert sell["execution_date"] == date(2024, 1, 15)
+
+
+def test_max_holding_days_signal_equals_execution_date():
+    """max_holding_days: 당일 종가 체결 — signal_date == execution_date == today."""
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15, 16, 17, 18, 19)]
+    closes = [100, 110, 105, 105, 105, 105, 105, 105]
+    df = _make_df(dates, closes=closes)
+    engine = _make_engine(_trivial_entry_strategy(max_holding_days=3))
+    result = engine.run(df)
+
+    sells = [
+        ex
+        for ex in result.trade_executions
+        if "SELL" in ex["execution_type"] and ex["reason"] == "max_holding_days"
+    ]
+    assert len(sells) == 1
+    sell = sells[0]
+    assert sell["signal_date"] == sell["execution_date"]
+
+
+def test_last_bar_entry_signal_skipped_when_next_date_missing():
+    """마지막 봉에서 entry 신호 발생 → next_date NaT → 매수 skip."""
+    # Day0: close=100, Day1: close=110 (entry True via ma_period=2)
+    # Day1이 마지막 봉 → next_open / next_date 모두 NaN/NaT → 매수 skip
+    dates = [date(2024, 1, 10), date(2024, 1, 11)]
+    df = _make_df(dates, closes=[100, 110])
+    engine = _make_engine(_trivial_entry_strategy())
+    result = engine.run(df)
+
+    buys = [ex for ex in result.trade_executions if ex["execution_type"] == "BUY"]
+    assert buys == [], (
+        f"마지막 봉에서 next_date 없어 매수 skip되어야 함. 발생한 BUY: {buys}"
+    )
+
+
+def test_last_bar_exit_signal_skipped_when_next_date_missing():
+    """마지막 봉에서 exit_signal True → next_date NaT → 매도 skip (포지션 유지)."""
+    # Day0~1 상승(매수 후보 형성), Day2 매수(체결), Day3 하락 (exit_signal True),
+    # Day3가 마지막 봉이라면 next_date 없음 → exit_signal 매도 skip.
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15)]
+    df = _make_df(dates, closes=[100, 110, 110, 95])
+    engine = _make_engine(_trivial_entry_strategy(exit_signal_below_ma=True))
+    result = engine.run(df)
+
+    # 매수는 Day2 신호 → Day3(15) 체결로 발생.
+    buys = [ex for ex in result.trade_executions if ex["execution_type"] == "BUY"]
+    assert len(buys) == 1
+    # Day3(15)가 마지막 봉이므로 exit_signal 매도가 skip되어야 함.
+    sells = [
+        ex
+        for ex in result.trade_executions
+        if "SELL" in ex["execution_type"] and ex["reason"] == "exit_signal"
+    ]
+    assert sells == [], (
+        f"마지막 봉에서 next_date 없어 exit_signal 매도 skip되어야 함: {sells}"
+    )
+
+
+def test_engine_fills_next_date_when_missing():
+    """df에 next_date 컬럼이 없어도 BacktestEngine이 자동으로 채운다.
+
+    PriceLoader가 14번 문서에 맞춰 next_date를 채우기 전 dev 환경 호환성.
+    next row의 가격/조건은 보지 않고 date만 1칸 shift — look-ahead 차단.
+    """
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15)]
+    df = _make_df(dates, closes=[100, 100, 110, 110])
+    # next_date 컬럼이 _make_df에서는 채워지지 않음 (체크).
+    assert "next_date" not in df.columns
+    engine = _make_engine(_trivial_entry_strategy())
+    result = engine.run(df)
+
+    # next_open 체결이 정상 동작 → BUY 1건.
+    buys = [ex for ex in result.trade_executions if ex["execution_type"] == "BUY"]
+    assert len(buys) == 1
+    assert buys[0]["execution_date"] == date(2024, 1, 15)
+
+
+def test_holding_days_uses_execution_date_basis():
+    """holding_days = exit_execution_date - entry_execution_date.
+
+    매수 next_open 체결, intraday take_profit 당일 체결 → 보유일수 계산이
+    execution_date 기반이므로 1일 단축 효과가 정확히 반영된다.
+    """
+    from app.backtest.metrics import calculate_metrics
+
+    dates = [date(2024, 1, d) for d in (10, 11, 12, 15)]
+    # Day1 close=110 entry True → Day2(12) signal? 아니. 1일 MA=110 이라 False.
+    # Day0 100, Day1 110 → ma_period=2 평균=105. 110>105 entry True (Day1).
+    # Day2(12) 시가 110 매수 (execution_date=12). signal_date=Day1(11).
+    # Day3(15) 시가 115, high 130 → 110*1.07=117.7 익절 → 당일 체결 execution_date=15.
+    # holding_days = 15 - 12 = 3일 (exit_execution - entry_execution)
+    df = _make_df(
+        dates,
+        closes=[100, 110, 110, 125],
+        opens=[100, 110, 110, 115],
+        highs=[100, 110, 110, 130],
+        lows=[100, 110, 110, 113],
+    )
+    engine = _make_engine(_trivial_entry_strategy(take_profit=7.0))
+    result = engine.run(df)
+    metrics = calculate_metrics(result)
+
+    # holding_days = 15 - 12 = 3
+    assert metrics["avg_holding_days"] == pytest.approx(3.0, abs=0.01), metrics
