@@ -27,6 +27,9 @@ ALL_DEFINITIONS: dict[str, dict] = {
     _volume.VOLUME_RATIO_META["type"]: _volume.VOLUME_RATIO_META,
     _rsi.RSI_LEVEL_META["type"]: _rsi.RSI_LEVEL_META,
     _exit_position.TAKE_PROFIT_META["type"]: _exit_position.TAKE_PROFIT_META,
+    _exit_position.STOP_LOSS_META["type"]: _exit_position.STOP_LOSS_META,
+    _exit_position.MAX_HOLDING_DAYS_META["type"]: _exit_position.MAX_HOLDING_DAYS_META,
+    _exit_position.TRAILING_STOP_META["type"]: _exit_position.TRAILING_STOP_META,
 }
 
 
