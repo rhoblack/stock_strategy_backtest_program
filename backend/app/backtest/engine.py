@@ -94,6 +94,7 @@ from app.backtest.execution import ExecutionModel
 from app.backtest.result import BacktestResult, DailyEquity
 from app.core.cancellation import CancellationToken
 from app.portfolio.portfolio import Portfolio
+from app.portfolio.sizer import PositionSizer
 from app.strategy.engine import StrategyEngine
 from app.strategy.registry import condition_registry
 
@@ -144,6 +145,8 @@ class BacktestEngine:
         self.execution_model = execution_model
         self.config = config
         self.cash_manager = cash_manager
+        # PositionSizer — 매수 수량 계산 위임 (05번 §8). 상태 없음(stateless).
+        self.position_sizer = PositionSizer()
         # cash_events 누적 (서비스가 영속화)
         self.cash_events: list[dict] = []
         # === event_log 누적 (04-n + 13-p + 13-q, step 023) ===
@@ -1110,7 +1113,9 @@ class BacktestEngine:
             est_price = self.execution_model.apply_slippage_and_tick(
                 next_open, side="buy", market=self.config.market
             )
-            est_quantity = int(self.config.position_size_amount // max(est_price, 1))
+            est_quantity = self.position_sizer.calculate_quantity(
+                max(est_price, 1), self.portfolio, self.config
+            )
             if est_quantity > 0:
                 est_execution = self.execution_model.calculate_buy_cost(
                     est_price, est_quantity, raw_price=next_open
@@ -1131,7 +1136,10 @@ class BacktestEngine:
         if exec_price <= 0:
             return 0.0
 
-        quantity = int(self.config.position_size_amount // exec_price)
+        # PositionSizer — sizing_method에 따라 수량 계산 (05번 §8)
+        quantity = self.position_sizer.calculate_quantity(
+            exec_price, self.portfolio, self.config
+        )
         if quantity <= 0:
             return 0.0
 

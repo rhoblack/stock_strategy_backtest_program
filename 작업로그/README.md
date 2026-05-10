@@ -55,6 +55,7 @@
 | 12 | UI 확장 (StrategyConfigPanel + StrategyHeader + chart-data DB + 6 탭 5 차트 + TanStack Table + UniverseSelector) — test-engineer ship-go | ✅ 완료 (5 step) |
 | 13 | 정확성 잔존 + Export + 운영 (KRW Decimal / symbol_performance / API 잔존 / 카탈로그 정식화 / alembic 정상화) — test-engineer 🟢 ship-go | ✅ 완료 (7 step) |
 | 14 | 조건 추가 9종 (avg_trading_value/macd_cross/new_high_breakout/bullish_candle 등 13→21종) — test-engineer 🟢 ship-go | ✅ 완료 (4 step) |
+| 15 | PositionSizer 확장 + buy_skipped_cash_shortage event + trade_group 단위 익절/손절 | 🔄 진행 중 (1/3) |
 
 **현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 **Critical 5/5 모두 해소** + 외부 4.7 일괄 — 신뢰성 기반 정합화 완료. 다음 단계는 시장데이터/복수종목 트랙)
 
@@ -93,6 +94,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [045-position-sizer](./2026-05-11-045-position-sizer.md) | 15 | backtest-engine-developer | ✅ | PositionSizer fixed_ratio + equal_weight (05-i) — 1210 PASS / 골든 9지표 frozen 유지 |
 | 2026-05-11 | [044-candle-conditions](./2026-05-11-044-candle-conditions.md) | 14 | condition-author | ✅ | **Phase 14 마지막 step**: bullish_candle(양봉+몸통비율) + price_change_pct(당일 등락률 %) — 03-m·n 해소, 1192 PASS |
 | 2026-05-11 | [043-breakout-conditions](./2026-05-11-043-breakout-conditions.md) | 14 | condition-author | ✅ | new_high_breakout(shift(1) 신고가) + gap_pct(갭률) + momentum_return(N일 수익률) — 03-j·k·l 해소, 1168 PASS |
 | 2026-05-11 | [042-macd-conditions](./2026-05-11-042-macd-conditions.md) | 14 | condition-author | ✅ | macd_cross(MACD/시그널 교차) + macd_histogram(히스토그램 임계값) — 03-h·i 해소, 1140 PASS |

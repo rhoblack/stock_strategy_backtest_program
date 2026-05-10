@@ -79,6 +79,17 @@ class BacktestConfig:
     max_daily_entries: int | None = None
     daily_buy_budget: float | None = None
 
+    # === PositionSizer (05번 §8) ===
+    # default "fixed_amount" → 기존 position_size_amount 동작 그대로 (하위 호환).
+    # "fixed_ratio"  : portfolio.total_equity() × sizing_ratio → 수량 계산.
+    # "equal_weight" : portfolio.total_equity() / max_positions → 수량 계산.
+    #                  max_positions(포지션 한도)와 동일 필드를 공유하므로,
+    #                  equal_weight 사용 시 max_positions를 반드시 지정해야 한다.
+    sizing_method: str = "fixed_amount"
+    # fixed_ratio 방식 전용: 총자산 대비 비율 (예: 0.1 → 10%). (0, 1] 범위.
+    # "fixed_amount" / "equal_weight" 방식에서는 무시한다.
+    sizing_ratio: float | None = None
+
     # === 상한가/하한가 차단 (04-o + 정확성 정책 13.4.3 / 13-q) ===
     # KOSPI/KOSDAQ 가격 제한폭 ±30% 정책 (정확성 정책 13.4.3).
     # default 보수: 상한가 매수 / 하한가 매도 모두 차단 (skip + event_log).
@@ -99,6 +110,34 @@ class BacktestConfig:
     limit_pct: float = 0.27
 
     def __post_init__(self) -> None:
+        # === sizing_method 검증 (05번 §8) ===
+        SUPPORTED_SIZING_METHODS: frozenset[str] = frozenset(
+            {"fixed_amount", "fixed_ratio", "equal_weight"}
+        )
+        if self.sizing_method not in SUPPORTED_SIZING_METHODS:
+            raise ValueError(
+                f"지원하지 않는 sizing_method: {self.sizing_method!r}. "
+                f"허용 값: {sorted(SUPPORTED_SIZING_METHODS)}"
+            )
+        # fixed_ratio이면 sizing_ratio 필수
+        if self.sizing_method == "fixed_ratio" and self.sizing_ratio is None:
+            raise ValueError(
+                "sizing_method='fixed_ratio'는 sizing_ratio가 필요합니다"
+            )
+        # sizing_ratio가 명시된 경우 (0, 1] 범위 강제
+        if self.sizing_ratio is not None:
+            if isinstance(self.sizing_ratio, bool) or not isinstance(
+                self.sizing_ratio, (int, float)
+            ):
+                raise ValueError(
+                    f"sizing_ratio는 숫자여야 합니다: "
+                    f"{type(self.sizing_ratio).__name__}"
+                )
+            if not (0 < self.sizing_ratio <= 1):
+                raise ValueError(
+                    f"sizing_ratio는 (0, 1] 범위여야 합니다: {self.sizing_ratio}"
+                )
+
         if self.priority_method not in SUPPORTED_PRIORITY_METHODS:
             raise ValueError(
                 f"지원하지 않는 priority_method: {self.priority_method!r}. "
