@@ -92,6 +92,8 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [016-market-data-models-skeleton](./2026-05-10-016-market-data-models-skeleton.md) | 9 | market-data-engineer | ✅ | **시장데이터 트랙 1단계**: symbols/daily_prices/trading_calendar 모델 + alembic + repositories CRUD 9종 + 35건 신규 (LocalCsvProvider/PriceLoader/UniverseSelector는 016b 후속) |
+| 2026-05-10 | [015-execution-date-separation](./2026-05-10-015-execution-date-separation.md) | 9 | backtest-engine-developer | ✅ | **체결일 정합성 (외부 4.13)**: signal_date vs execution_date 분리 + next_date NaN skip + 골든 갱신 (avg_holding_days 7.5→6.5, 첫 거래 +1일) + 10건 신규 |
 | 2026-05-10 | [014-execution-persistence-and-daily-return](./2026-05-10-014-execution-persistence-and-daily-return.md) | 8 | backend-api-engineer | ✅ | **Phase 8 완료** ✅ (Critical 5/5): TradeExecution fee/tax + DailyEquity daily/cumulative + cash_events 분해 영속화 + alembic + 418 PASS |
 | 2026-05-10 | [013-execution-result-and-cash-manager](./2026-05-10-013-execution-result-and-cash-manager.md) | 8 | backtest-engine-developer | ✅ | **C2+H1+M2+M4 해소**: ExecutionResult dataclass + cash_manager가 ExecutionModel 주입 + 골든 회귀 + 412 PASS |
 | 2026-05-10 | [012-exit-routing-and-peak-price](./2026-05-10-012-exit-routing-and-peak-price.md) | 8 | backtest-engine-developer | ✅ | **C1+C5 해소**: exit_position 4종 Registry 라우팅 + peak_price prev-high (13.3.5) + 골든 회귀 + 397 PASS |

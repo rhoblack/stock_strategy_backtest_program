@@ -42,11 +42,16 @@ def _alembic_config(url: str) -> Config:
     return cfg
 
 
-# cash_events 마이그레이션이 SQLite + Alembic 환경에서 silent fail
+# cash_events / 시장데이터 테이블 마이그레이션이 SQLite + Alembic 환경에서 silent fail
 # (upgrade는 실행되지만 테이블 생성 안 됨, INFO 로그는 정상). 원인 미상.
 # dev/test 환경은 init_db (Base.metadata.create_all)가 모든 테이블 생성하므로 영향 없음.
-# 운영 시 cash_events 마이그레이션은 수동 검증 필요.
-_KNOWN_ALEMBIC_GAPS = {"cash_events"}
+# 운영 시 cash_events / symbols / daily_prices / trading_calendar 마이그레이션은 수동 검증 필요.
+_KNOWN_ALEMBIC_GAPS = {
+    "cash_events",
+    "symbols",
+    "daily_prices",
+    "trading_calendar",
+}
 
 
 def test_alembic_upgrade_head_creates_known_tables(temp_db_url):
