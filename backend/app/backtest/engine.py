@@ -92,6 +92,7 @@ import pandas as pd
 from app.backtest.config import BacktestConfig
 from app.backtest.execution import ExecutionModel
 from app.backtest.result import BacktestResult, DailyEquity
+from app.core.cancellation import BacktestCancelledError, CancellationToken
 from app.portfolio.portfolio import Portfolio
 from app.strategy.engine import StrategyEngine
 from app.strategy.registry import condition_registry
@@ -169,6 +170,7 @@ class BacktestEngine:
         prices: dict[str, pd.DataFrame] | pd.DataFrame,
         universe_resolver: Callable[[date_type], list[str]] | None = None,
         delisting_dates: dict[str, date_type] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> BacktestResult:
         """단일 또는 복수 종목 시세에 대해 백테스트를 실행하고 결과를 반환.
 
@@ -253,6 +255,13 @@ class BacktestEngine:
         peak_equity: int = self.portfolio.initial_cash
 
         for today in trading_dates:
+            # === cancel 체크 (10번 §4.4 — 날짜 루프 상단에서 확인) ===
+            # cancel_token이 주어진 경우 매 거래일 시작 시점에 취소 신호를 확인한다.
+            # BacktestCancelledError는 호출자(backtest_service)가 catch하여
+            # DB 상태를 CANCELLED로 갱신하고 raise를 흡수한다.
+            if cancel_token is not None:
+                cancel_token.check_cancelled()
+
             if today < self.config.start_date or today > self.config.end_date:
                 continue
 

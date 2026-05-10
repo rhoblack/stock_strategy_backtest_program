@@ -667,6 +667,19 @@ def cancel(
     session: Session = Depends(get_db_session),
     user_id: int = Depends(get_current_user_id),
 ):
+    """실행 중인 백테스트 취소 (10번 §4.4).
+
+    처리 흐름:
+        1. user_id 스코프 강제 — 미소유 시 BACKTEST_RUN_NOT_FOUND.
+        2. 이미 종료된 실행이면 BACKTEST_NOT_RUNNING(409) 반환.
+        3. DB status → CANCELLING (빠른 응답 + 진행 중 표시).
+        4. CancellationToken.cancel() 호출 → 실행 중 엔진 루프에 취소 신호 전달.
+           토큰이 없으면 (엔진이 아직 시작 전이거나 이미 완료) DB만 CANCELLED로 즉시 변경.
+
+    응답: 현재 DB 상태 반환 (cancelling 또는 cancelled).
+    """
+    from app.core.cancellation import cancel_run as _cancel_run
+
     run = _get_run_or_raise(session, run_id, user_id=user_id)
     if run.status not in (BacktestStatus.PENDING, BacktestStatus.RUNNING):
         # handler가 BACKTEST_NOT_RUNNING(409)으로 변환
@@ -674,6 +687,20 @@ def cancel(
             f"이미 종료된 실행입니다 (status={run.status.value}).",
             details=[{"field": "status", "message": run.status.value}],
         )
-    run.status = BacktestStatus.CANCELLED
+
+    # DB status를 CANCELLING으로 (10번 §4.4 응답: "cancelling").
+    # 실제 엔진이 BacktestCancelledError를 처리하면 CANCELLED로 갱신됨.
+    run.status = BacktestStatus.CANCELLING
     session.commit()
+
+    # CancellationToken에 취소 신호 전달. 토큰이 없으면 (PENDING 상태 등)
+    # 엔진이 시작할 때 체크 전에 이미 DB가 CANCELLING이므로 서비스가 시작 시 처리.
+    token_found = _cancel_run(run_id)
+    if not token_found:
+        # 토큰 없음 = 엔진 미시작 또는 이미 종료 → DB를 CANCELLED로 즉시 전환
+        run.status = BacktestStatus.CANCELLED
+        run.finished_at = __import__("datetime").datetime.now(__import__("datetime").UTC)
+        session.commit()
+
+    session.refresh(run)
     return run

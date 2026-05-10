@@ -92,6 +92,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [037-cancel-and-error-catalog](./2026-05-11-037-cancel-and-error-catalog.md) | 13 | backend-api-engineer | ✅ | **10-q·r 해소**: cancel 엔진 전파(CancellationToken) + 에러 카탈로그 §7.1 정식화(25코드) — 1036 PASS / 80% 돌파 |
 | 2026-05-11 | [036-api-rest-completion](./2026-05-11-036-api-rest-completion.md) | 13 | backend-api-engineer | ✅ | **10-m·n·o·p 해소**: strategies versions + backtests 목록/상세 + 시장 데이터 API + trades pagination — 961 PASS |
 | 2026-05-10 | [035-export-enhancements](./2026-05-10-035-export-enhancements.md) | 13 | backend-api-engineer | ✅ | **09-i·j·k·l 해소**: symbol_performance.csv + universe_history.csv + /export/* 분리 라우팅 + encoding 옵션 — 916 PASS |
 | 2026-05-10 | [034-krw-decimal-orderby](./2026-05-10-034-krw-decimal-orderby.md) | 13 | backtest-engine-developer + backend-api-engineer | ✅ | **13-s·13-t 해소**: KRW int 전환(32건) + ORDER BY 표준화(9건) — 885 PASS |
@@ -248,7 +249,8 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 ✅ 완료: step 034 — KRW Decimal/int 통화 처리 + DB query ORDER BY 표준화 (13-s, 13-t 해소, 885 PASS)
 ✅ 완료: step 035 — symbol_performance.csv + universe_history.csv + /export/* 분리 라우팅 + encoding 옵션 (09-i·j·k·l 해소, 916 PASS)
 ✅ 완료: step 036 — strategies versions + backtests 목록/상세 + 시장 데이터 API + trades pagination (10-m·n·o·p 해소, 961 PASS)
-🔄 다음: step 037 — 백테스트 cancel 엔진 전파 (H3) + 표준 카탈로그 정식화
+✅ 완료: step 037 — cancel 엔진 전파(CancellationToken) + 에러 카탈로그 §7.1 정식화 (10-q·r 해소, 1036 PASS)
+🔄 다음: step 038 — alembic + SQLite silent-skip 환경 정상화 + 12 §15 fixtures 표준화
 
 Phase 13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 

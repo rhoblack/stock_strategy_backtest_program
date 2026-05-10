@@ -2,6 +2,32 @@
 
 설계서 10번 API 문서 7.1절의 에러 코드와 매핑되는 예외 클래스를 정의.
 모든 도메인 예외는 AppError를 상속한다.
+
+에러 코드 카탈로그 (10번 §7.1 전체):
+
+전략 / 검증:
+    INVALID_STRATEGY_JSON, UNKNOWN_CONDITION_TYPE,
+    EXIT_POSITION_IN_EXIT_SIGNAL, EXIT_SIGNAL_IN_EXIT_POSITION,
+    INVALID_OPERATOR, INVALID_PARAMETER_VALUE, MISSING_REQUIRED_PARAMETER,
+    STRATEGY_NOT_FOUND, DUPLICATE_STRATEGY_NAME
+
+백테스트:
+    BACKTEST_RUN_NOT_FOUND, BACKTEST_ALREADY_RUNNING, BACKTEST_NOT_RUNNING,
+    BACKTEST_TIMEOUT, INVALID_DATE_RANGE, INSUFFICIENT_PRICE_DATA,
+    TRADING_CALENDAR_MISSING
+
+데이터:
+    MARKET_DATA_NOT_FOUND, SYMBOL_NOT_FOUND, UNIVERSE_EMPTY,
+    UNIVERSE_PREVIEW_FAILED
+
+권한 / 인증:
+    UNAUTHORIZED, FORBIDDEN, RATE_LIMIT_EXCEEDED
+
+Export:
+    EXPORT_FAILED, EXPORT_TOO_LARGE
+
+내부 (카탈로그 외, 개발자용):
+    POSITION_CONDITION_MISUSE, TIMESERIES_CONDITION_MISUSE
 """
 
 
@@ -64,6 +90,12 @@ class StrategyNotFoundError(AppError):
     code = "STRATEGY_NOT_FOUND"
 
 
+class DuplicateStrategyNameError(AppError):
+    """동일 사용자의 전략 이름이 중복되는 경우 (409 Conflict)."""
+
+    code = "DUPLICATE_STRATEGY_NAME"
+
+
 class PositionConditionMisuseError(AppError):
     """포지션 조건을 시계열 평가(evaluate)로 호출한 경우.
 
@@ -102,6 +134,12 @@ class BacktestAlreadyRunningError(AppError):
     code = "BACKTEST_ALREADY_RUNNING"
 
 
+class BacktestTimeoutError(AppError):
+    """백테스트 실행이 제한 시간 초과."""
+
+    code = "BACKTEST_TIMEOUT"
+
+
 class InsufficientPriceDataError(AppError):
     code = "INSUFFICIENT_PRICE_DATA"
 
@@ -127,3 +165,39 @@ class SymbolNotFoundError(AppError):
 
 class UniverseEmptyError(AppError):
     code = "UNIVERSE_EMPTY"
+
+
+class UniversePreviewFailedError(AppError):
+    """유니버스 미리보기 실패 (데이터 부족, 파라미터 오류 등)."""
+
+    code = "UNIVERSE_PREVIEW_FAILED"
+
+
+# === 권한 / 인증 ===
+
+
+class UnauthorizedError(AppError):
+    code = "UNAUTHORIZED"
+
+
+class ForbiddenError(AppError):
+    code = "FORBIDDEN"
+
+
+class RateLimitExceededError(AppError):
+    code = "RATE_LIMIT_EXCEEDED"
+
+
+# === Export ===
+
+
+class ExportFailedError(AppError):
+    """Export 처리 중 오류."""
+
+    code = "EXPORT_FAILED"
+
+
+class ExportTooLargeError(AppError):
+    """Export 결과가 허용 크기를 초과."""
+
+    code = "EXPORT_TOO_LARGE"

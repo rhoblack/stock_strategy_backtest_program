@@ -27,6 +27,7 @@ from app.backtest.config import BacktestConfig
 from app.backtest.engine import BacktestEngine
 from app.backtest.execution import ExecutionModel
 from app.backtest.metrics import calculate_metrics
+from app.core.cancellation import BacktestCancelledError, cancel_run, register_token, unregister_token
 from app.core.exceptions import BacktestRunNotFoundError
 from app.market_data import repositories as market_repos
 from app.models.backtest import BacktestResult, BacktestRun
@@ -110,6 +111,11 @@ def run_backtest(
 
     df=None이면 universe_config의 synthetic_seed/synthetic_n로 합성 데이터 생성
     (Phase 14 데이터 파이프라인 미구현 시 dev 모드).
+
+    cancel 전파 (10번 §4.4):
+        run_id에 대한 CancellationToken을 등록하고 BacktestEngine.run()에 전달.
+        cancel 엔드포인트가 token.cancel()을 호출하면 다음 날짜 루프에서
+        BacktestCancelledError가 발생 → DB status=CANCELLED + 정상 종료.
     """
     run = _get_run(session, run_id)
 
@@ -121,11 +127,21 @@ def run_backtest(
         n = int(cfg.get("synthetic_n", 90))
         df = build_synthetic_series(seed=seed, n=n, base_date=run.start_date)
 
+    # 시작 전 취소 상태 체크 (CANCELLING이면 즉시 CANCELLED 처리)
+    if run.status == BacktestStatus.CANCELLING:
+        run.status = BacktestStatus.CANCELLED
+        run.finished_at = _utcnow()
+        session.commit()
+        return None  # type: ignore[return-value]
+
     # 상태 전이: PENDING → RUNNING
     run.status = BacktestStatus.RUNNING
     run.started_at = _utcnow()
     run.progress_pct = 0.0
     session.commit()
+
+    # CancellationToken 등록 (cancel 엔드포인트가 이 토큰을 set()한다)
+    cancel_token = register_token(run_id)
 
     try:
         # 단일 종목 가정: universe_config["symbol"] 또는 df의 첫 종목 코드
@@ -164,7 +180,7 @@ def run_backtest(
             cash_manager=cash_manager,
         )
 
-        engine_result = engine.run(df)
+        engine_result = engine.run(df, cancel_token=cancel_token)
         metrics = calculate_metrics(engine_result)
 
         # 영속화
@@ -181,12 +197,29 @@ def run_backtest(
         session.refresh(backtest_result)
         return backtest_result
 
+    except BacktestCancelledError:
+        # cancel_token.cancel()로 인한 정상 취소 — CANCELLED 상태로 전이
+        # 부분 결과는 폐기 (10번 §4.4: "부분 결과는 폐기")
+        run.status = BacktestStatus.CANCELLED
+        run.finished_at = _utcnow()
+        session.commit()
+        # 취소는 예외로 전파하지 않음 (백그라운드 실행에서 swallow)
+        # 하지만 호출자가 직접 catch할 수 있도록 BacktestCancelledError를 다시 raise하지 않는다.
+        # BackgroundTask는 suppress(Exception)로 감싸져 있어 결과 무관.
+        # 직접 호출(테스트 등) 시에도 CANCELLED 상태가 DB에 반영됨.
+        # 반환값이 없으므로 None 반환 (BacktestResult 타입 위반이지만 취소 경로는 예외 흐름).
+        return None  # type: ignore[return-value]
+
     except Exception as exc:  # noqa: BLE001
         run.status = BacktestStatus.FAILED
         run.finished_at = _utcnow()
         run.error_message = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"[:4000]
         session.commit()
         raise
+
+    finally:
+        # 실행 종료(완료/취소/실패) 후 레지스트리에서 토큰 제거
+        unregister_token(run_id)
 
 
 def get_backtest_summary(

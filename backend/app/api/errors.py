@@ -45,7 +45,7 @@ CODE_STATUS_MAP: dict[str, int] = {
     # 401/403 인증·권한
     "UNAUTHORIZED": status.HTTP_401_UNAUTHORIZED,
     "FORBIDDEN": status.HTTP_403_FORBIDDEN,
-    # 404 not found
+    # 404 not found (리소스별 구체적 코드)
     "STRATEGY_NOT_FOUND": status.HTTP_404_NOT_FOUND,
     "BACKTEST_RUN_NOT_FOUND": status.HTTP_404_NOT_FOUND,
     "MARKET_DATA_NOT_FOUND": status.HTTP_404_NOT_FOUND,
@@ -63,8 +63,13 @@ CODE_STATUS_MAP: dict[str, int] = {
     "INSUFFICIENT_PRICE_DATA": status.HTTP_422_UNPROCESSABLE_ENTITY,
     "TRADING_CALENDAR_MISSING": status.HTTP_422_UNPROCESSABLE_ENTITY,
     "UNIVERSE_EMPTY": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    "UNIVERSE_PREVIEW_FAILED": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    "BACKTEST_TIMEOUT": status.HTTP_422_UNPROCESSABLE_ENTITY,
     # 429
     "RATE_LIMIT_EXCEEDED": status.HTTP_429_TOO_MANY_REQUESTS,
+    # Export (500 or 400 계열 선택: 대용량은 400, 처리 실패는 500)
+    "EXPORT_FAILED": status.HTTP_500_INTERNAL_SERVER_ERROR,
+    "EXPORT_TOO_LARGE": status.HTTP_400_BAD_REQUEST,
     # 500 fallback
     "APP_ERROR": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
@@ -123,12 +128,16 @@ async def _handle_app_error(request: Request, exc: AppError) -> JSONResponse:
 async def _handle_request_validation_error(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    """Pydantic schema 검증 실패도 표준 envelope으로 변환.
+    """Pydantic schema 검증 실패도 표준 envelope으로 변환 (10번 §7.1 정식화).
 
-    FastAPI 기본은 `{"detail": [...]}` — 본 핸들러가 INVALID_STRATEGY_JSON과는
-    다른 일반적인 schema 위반(예: 필수 필드 누락, 타입 불일치)을 감싼다.
+    FastAPI 기본은 `{"detail": [...]}` — 본 핸들러가 카탈로그 코드로 변환한다.
     `details`는 Pydantic의 errors() 결과 중 핵심만 추려 노출한다 (결정론을
     위해 loc 기준 정렬).
+
+    경로별 코드 선택 (10번 §7.1):
+        /api/strategies  경로 → INVALID_STRATEGY_JSON
+        /api/backtests   경로 → INVALID_STRATEGY_JSON (backtest create 요청)
+        그 외            → INVALID_PARAMETER_VALUE (일반 파라미터 검증 실패)
     """
     rid = _request_id_from(request)
     raw = exc.errors()
@@ -141,9 +150,18 @@ async def _handle_request_validation_error(
         for item in raw
     ]
     details.sort(key=lambda d: (d.get("field", ""), d.get("type", "")))
+
+    # 경로 기반 에러 코드 선택 (카탈로그 내 코드만 사용)
+    if _looks_like_strategy_payload(request):
+        error_code = "INVALID_STRATEGY_JSON"
+        message = "요청 본문이 올바르지 않습니다."
+    else:
+        error_code = "INVALID_PARAMETER_VALUE"
+        message = "요청 파라미터가 올바르지 않습니다."
+
     return _envelope_response(
-        "INVALID_STRATEGY_JSON" if _looks_like_strategy_payload(request) else "VALIDATION_ERROR",
-        "요청 본문이 올바르지 않습니다.",
+        error_code,
+        message,
         details=details,
         status_code=status.HTTP_400_BAD_REQUEST,
         request_id=rid,
@@ -151,15 +169,9 @@ async def _handle_request_validation_error(
 
 
 def _looks_like_strategy_payload(request: Request) -> bool:
-    """요청 경로가 strategy 관련이면 INVALID_STRATEGY_JSON 코드를 사용한다.
-    그 외 경로는 일반 VALIDATION_ERROR(카탈로그 외)이지만 카탈로그 외 코드를
-    피하고자 INVALID_STRATEGY_JSON을 쓰지 않고 generic 처리한다.
-
-    NOTE: VALIDATION_ERROR는 10.7.1 카탈로그에 없으나, FastAPI 기본 422와
-    동등한 generic schema 위반에 대한 임시 코드. 후속 작업에서 10번 문서
-    7.1에 추가 또는 더 구체적인 코드로 분기해야 한다 (Follow-ups 참조).
-    """
-    return "/api/strategies" in request.url.path or "/api/backtests" in request.url.path
+    """요청 경로가 strategy/backtest 관련이면 INVALID_STRATEGY_JSON 코드를 사용."""
+    path = request.url.path
+    return "/api/strategies" in path or "/api/backtests" in path
 
 
 async def _handle_starlette_http_exception(
@@ -188,18 +200,24 @@ async def _handle_starlette_http_exception(
 
 
 def _status_to_code(http_status: int) -> str:
-    """HTTP 상태 → 카탈로그 코드 추정. 404=NOT_FOUND, 405=METHOD_NOT_ALLOWED."""
-    if http_status == 404:
-        return "NOT_FOUND"
-    if http_status == 405:
-        return "METHOD_NOT_ALLOWED"
+    """HTTP 상태 → 카탈로그 코드 추정 (10번 §7.1 정식 코드만 사용).
+
+    라우트 미등록 404, 405 등 Starlette 자체 HTTPException에서 호출된다.
+    카탈로그에 없는 코드는 APP_ERROR로 fallback한다.
+
+    NOTE: 404는 리소스별 코드(STRATEGY_NOT_FOUND 등)를 사용해야 하지만,
+    라우트가 존재하지 않는 경우에는 리소스를 특정할 수 없으므로
+    APP_ERROR로 처리한다. 실제 리소스 미존재는 AppError 서브클래스를 raise한다.
+    """
     if http_status == 401:
         return "UNAUTHORIZED"
     if http_status == 403:
         return "FORBIDDEN"
     if http_status == 429:
         return "RATE_LIMIT_EXCEEDED"
-    return "HTTP_ERROR"
+    # 404 (라우트 없음), 405 (메서드 없음) → APP_ERROR (리소스 특정 불가)
+    # 라우트 자체가 없는 경우이므로 카탈로그 리소스별 코드 사용 불가.
+    return "APP_ERROR"
 
 
 async def _handle_unexpected_exception(request: Request, exc: Exception) -> JSONResponse:
