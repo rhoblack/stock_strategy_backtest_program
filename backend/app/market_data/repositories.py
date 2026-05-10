@@ -26,6 +26,10 @@ from typing import Any
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.corporate_action import (
+    CORPORATE_ACTION_EVENT_TYPES,
+    CorporateAction,
+)
 from app.models.daily_price import DailyPrice
 from app.models.symbol import Symbol
 from app.models.trading_calendar import TradingCalendar
@@ -380,3 +384,118 @@ def upsert_trading_day(
     existing.holiday_name = holiday_name
     session.flush()
     return existing
+
+
+# ---------------------------------------------------------------------------
+# corporate_actions (026 추가)
+# ---------------------------------------------------------------------------
+
+
+def upsert_corporate_action(
+    session: Session,
+    data: Mapping[str, Any],
+) -> CorporateAction:
+    """corporate_actions 단일 row upsert.
+
+    UniqueConstraint(symbol, event_date, event_type) 위반 시 갱신 (ratio /
+    dividend_amount / notes).
+
+    13.7 / 14.9 정합성:
+        - close (원 가격)는 본 함수의 책임 밖 — 본 함수는 corporate_action 사실만 보존.
+        - adj_* 재계산은 AdjustedPriceProcessor (data_pipeline/processors/adjusted_price.py).
+
+    14.9 look-ahead 차단: 호출자가 미래 event_date를 넣어도 본 함수는 허용한다
+    (수집 시점의 사실 자체는 보존). Processor가 적용 시점에 `event_date <= as_of_date`로 필터.
+
+    Args:
+        data: dict — 필수 키: symbol / event_date / event_type.
+            선택 키: ratio (기본 0.0) / dividend_amount (기본 NULL) / notes.
+
+    Returns:
+        등록 또는 갱신된 CorporateAction (flush까지만, commit은 호출자 책임).
+
+    Raises:
+        KeyError: 필수 키 누락.
+        ValueError: 알 수 없는 event_type.
+    """
+    for key in ("symbol", "event_date", "event_type"):
+        if key not in data:
+            raise KeyError(f"corporate_action data missing required key: {key!r}")
+
+    event_type = str(data["event_type"])
+    if event_type not in CORPORATE_ACTION_EVENT_TYPES:
+        raise ValueError(
+            f"알 수 없는 event_type: {event_type!r}. "
+            f"허용: {CORPORATE_ACTION_EVENT_TYPES}"
+        )
+
+    # 기존 row 조회 (UniqueConstraint으로 0 또는 1건)
+    existing_stmt = (
+        select(CorporateAction)
+        .where(CorporateAction.symbol == data["symbol"])
+        .where(CorporateAction.event_date == data["event_date"])
+        .where(CorporateAction.event_type == event_type)
+    )
+    existing = session.execute(existing_stmt).scalar_one_or_none()
+
+    if existing is None:
+        new = CorporateAction(
+            symbol=data["symbol"],
+            event_date=data["event_date"],
+            event_type=event_type,
+            ratio=float(data.get("ratio", 0.0)),
+            dividend_amount=(
+                float(data["dividend_amount"])
+                if data.get("dividend_amount") is not None
+                else None
+            ),
+            notes=data.get("notes"),
+            created_at=_utcnow(),
+        )
+        session.add(new)
+        session.flush()
+        return new
+
+    if "ratio" in data:
+        existing.ratio = float(data["ratio"])
+    if "dividend_amount" in data:
+        existing.dividend_amount = (
+            float(data["dividend_amount"])
+            if data["dividend_amount"] is not None
+            else None
+        )
+    if "notes" in data:
+        existing.notes = data["notes"]
+    session.flush()
+    return existing
+
+
+def get_corporate_actions(
+    session: Session,
+    symbol: str,
+    start_date: date_type | None = None,
+    end_date: date_type | None = None,
+) -> list[CorporateAction]:
+    """종목별 corporate_actions 조회 — (event_date ASC, event_type ASC) 정렬.
+
+    결정론 (CLAUDE.md #8): 정렬 키 명시. AdjustedPriceProcessor는 본 결과를 받아
+    내부에서 시간 역순(event_date DESC, event_type ASC)으로 다시 정렬해 적용한다.
+
+    Args:
+        symbol: 6자리 종목코드.
+        start_date: 포함. None이면 무제한 과거.
+        end_date: 포함. None이면 무제한 미래.
+
+    Returns:
+        CorporateAction 리스트, (event_date ASC, event_type ASC).
+    """
+    stmt = (
+        select(CorporateAction)
+        .where(CorporateAction.symbol == symbol)
+        .order_by(CorporateAction.event_date.asc(), CorporateAction.event_type.asc())
+    )
+    if start_date is not None:
+        stmt = stmt.where(CorporateAction.event_date >= start_date)
+    if end_date is not None:
+        stmt = stmt.where(CorporateAction.event_date <= end_date)
+    return list(session.execute(stmt).scalars().all())

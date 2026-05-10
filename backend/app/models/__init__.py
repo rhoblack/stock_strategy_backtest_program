@@ -6,6 +6,10 @@
 
 from app.models.backtest import BacktestResult, BacktestRun
 from app.models.cash_event import CashEvent
+from app.models.corporate_action import (
+    CORPORATE_ACTION_EVENT_TYPES,
+    CorporateAction,
+)
 from app.models.daily_equity import DailyEquity
 from app.models.daily_price import DailyPrice
 from app.models.enums import BacktestStatus, TradeExecutionType
@@ -19,7 +23,9 @@ __all__ = [
     "BacktestResult",
     "BacktestRun",
     "BacktestStatus",
+    "CORPORATE_ACTION_EVENT_TYPES",
     "CashEvent",
+    "CorporateAction",
     "DailyEquity",
     "DailyPrice",
     "Strategy",

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.corporate_action import CorporateAction
     from app.models.daily_price import DailyPrice
 
 
@@ -61,6 +62,13 @@ class Symbol(Base, TimestampMixin):
 
     # 관계: 일봉 (daily_prices.symbol → symbols.symbol)
     daily_prices: Mapped[list[DailyPrice]] = relationship(
+        back_populates="symbol_ref",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    # 관계: corporate_actions (corporate_actions.symbol → symbols.symbol). 026 추가.
+    corporate_actions: Mapped[list[CorporateAction]] = relationship(
         back_populates="symbol_ref",
         cascade="all, delete-orphan",
         passive_deletes=True,
