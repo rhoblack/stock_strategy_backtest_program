@@ -51,7 +51,8 @@
 | 8 | 리뷰 011 Critical 후속 (Wave A·B·C = 010~014 완료, Critical 5/5 해소) | ✅ 완료 (5 step) |
 | 9 | 정확성 잔존(015·017) + 시장데이터 1단계(016·018·019) — test-engineer ship-go | ✅ 완료 (5 step) |
 | 10 | BacktestEngine 복수 종목 + priority + 한도 + event_log + 강제매도 (외부 CR-003) — test-engineer ship-go | ✅ 완료 (4 step) |
-| 11 | 데이터 파이프라인 본체 (collectors / processors / pykrx / 시가총액 시계열) | 🔄 다음 |
+| 11 | 데이터 파이프라인 본체 (collectors / processors / jobs / scheduler / 결손 알림) — test-engineer ship-go | ✅ 완료 (5 step) |
+| 12 | UI 확장 (02 schema GUI 정합화 + 차트 탭 + 종목 선택 + TanStack Table) | 🔄 다음 |
 
 **현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 **Critical 5/5 모두 해소** + 외부 4.7 일괄 — 신뢰성 기반 정합화 완료. 다음 단계는 시장데이터/복수종목 트랙)
 
@@ -90,6 +91,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [phase11-test-engineer-verification](./2026-05-10-phase11-test-engineer-verification.md) | 11 | test-engineer | ✅ | **Phase 11 완료 검증 🟢 ship-go**: 통합 회귀 825 PASS (+209) / 13.x·14.x 9개 정책 모두 통과 / 골든 9지표 유지 / e2e 5건 신규 |
 | 2026-05-10 | [028-jobs-scheduler-and-alerts](./2026-05-10-028-jobs-scheduler-and-alerts.md) | 11 | market-data-engineer | ✅ | **14-j·k 해소 / Phase 11 마지막 step**: 5 jobs(DailyUpdate/HistoricalBackfill/CorporateActionApply/MarketIndex/UniverseSnapshot) + Scheduler busy-set 락 + LockError + MissingDataCheckJob(forward-fill 금지) + 50건 신규 / 820 PASS — **65% (test-engineer 검증 대기)** |
 | 2026-05-10 | [027-market-indices-and-universe-history](./2026-05-10-027-market-indices-and-universe-history.md) | 11 | market-data-engineer | ✅ | **06-i + 07-o·p + 14-i 해소**: market_indices(KOSPI/KOSDAQ/KOSPI200/KOSDAQ150/KRX100) + universe_history(config_json/symbols_json/run_id) + alembic 59cda024ecf8 + 33건 신규 / 770 PASS / **0 fail** (016 head 가드 정리) — 64% |
 | 2026-05-10 | [026-corporate-actions-and-adjusted-price](./2026-05-10-026-corporate-actions-and-adjusted-price.md) | 11 | market-data-engineer | ✅ | **06-h + 07-n + 14-h + 13-r 해소**: corporate_actions 모델(8 event_type) + AdjustedPriceProcessor(시간 역순 적용, close 보존) + alembic c7f2a16d8b53 + 43건 신규 / 736 PASS — 62% |
@@ -221,20 +223,21 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 4. ✅ ExecutionResult dataclass + cash_manager의 ExecutionModel 주입 (C2 + H1 + M2 + M4) — 2026-05-10-013 (backtest-engine-developer)
 5. ✅ TradeExecution.fee/tax + DailyEquity.daily/cumulative + cash_events 분해 영속화 + alembic 마이그레이션 (M5 + 외부 4.7) — 2026-05-10-014 (backend-api-engineer)
 
-## Phase 10 완료 ✅ (4/4 step + test-engineer 🟢 ship-go)
+## Phase 11 완료 ✅ (5/5 step + test-engineer 🟢 ship-go)
 
 ### 완료 step
-- ✅ 020 BacktestEngine 복수 종목 (dict[symbol, df] | df 자동 wrap + held_at_open_set 가드)
-- ✅ 021 priority 4종 + symbol_asc tie-breaker + random_seed 실사용 (M7 해소)
-- ✅ 022 _apply_position_limits + max_positions/max_daily_entries/daily_buy_budget
-- ✅ 023 event_log 8종 사유 + 상한가/하한가 차단 + 상장폐지 강제 매도
-- ✅ test-engineer 검증: 616 passed / 1 fail(016 head 가드) / Phase 1 골든 9지표 유지 / e2e 4건 신규
+- ✅ 024 data_pipeline 패키지 골격 + ABC + 예외 계층
+- ✅ 025 PykrxCollector + retry(jitter 없음) + validators(HARD/SOFT)
+- ✅ 026 corporate_actions + AdjustedPriceProcessor (분할/배당, idempotent)
+- ✅ 027 market_indices + universe_history + repositories 4종
+- ✅ 028 5 jobs + Scheduler 락 + MissingDataCheckJob (forward-fill 금지)
+- ✅ test-engineer 검증: 825 passed (+209) / 13.x·14.x 9개 정책 ✅ / Phase 1 골든 9지표 유지 / e2e 5건 신규
 
-## Phase 11 다음 진입 — 데이터 파이프라인 본체
+## Phase 12 다음 진입 — UI 확장
 
-⏭ 다음: step 024 — data_pipeline 패키지 + collectors/processors/jobs 골격 (market-data-engineer)
+⏭ 다음: step 029 — 02 schema GUI 정합화 (position_sizing/cash_management/risk_management/execution/priority/metadata 6섹션 폼) (frontend-developer)
 
-Phase 11~13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
+Phase 12~13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 
 ---
 
