@@ -89,6 +89,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [020-backtest-engine-multi-symbol](./2026-05-10-020-backtest-engine-multi-symbol.md) | 10 | backtest-engine-developer | ✅ | **04-i·j 해소 / Phase 10 첫 step**: BacktestEngine dict[symbol, df] 입력 + 단일 df 자동 wrap 호환 + held_at_open_set 가드(015 의미 보존) + 15건 신규 / 551 PASS / 골든 9지표 frozen 유지 — 53% |
 | 2026-05-10 | [phase9-test-engineer-verification](./2026-05-10-phase9-test-engineer-verification.md) | 9 | test-engineer | ✅ | **Phase 9 완료 검증 🟢 ship-go**: 통합 회귀 536 PASS / 13.17 acceptance 모두 통과 / 골든 9지표 유지 / e2e 시나리오 5건 신규 |
 | 2026-05-10 | [019-universe-selector](./2026-05-10-019-universe-selector.md) | 9 | market-data-engineer | ✅ | **06-f·g + 13-m 해소 / Phase 9 마지막 step**: UniverseSelector + 06번 §8 공통 필터(8개) + 13.15 look-ahead 차단(시가총액 ≤ as_of_date / 거래대금 평균 < as_of_date) + selection_method 3종 + 35건 신규 / 531 collected — **52% (test-engineer 검증 대기)** |
 | 2026-05-10 | [018-local-csv-provider-and-price-loader](./2026-05-10-018-local-csv-provider-and-price-loader.md) | 9 | market-data-engineer | ✅ | **06-c·d·e 해소**: BaseProvider(ABC) + LocalCsvProvider(CSV ingest) + PriceLoader(BacktestEngine 호환 next_* DataFrame) + 31건 신규 / 497 collected — **50% 돌파** 🎉 |

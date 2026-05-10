@@ -1,11 +1,11 @@
-"""BacktestEngine — 단일 종목 백테스트 오케스트레이터.
+"""BacktestEngine — 단일/복수 종목 백테스트 오케스트레이터.
 
 설계서 04번 5~6절 + 정확성 정책 13.3 (일중 익절/손절) / 13.4 (갭/거래정지) /
 13.15 (look-ahead bias 체크리스트 — "신호일 종가로 신호, 다음날 시가로 체결") /
 13.16 (이벤트 우선순위) / 13.3.5 + 13.15 (peak_price 전일까지 high) /
 03번 §4 + CLAUDE.md 핵심원칙 #2 (ConditionRegistry 라우팅 통일).
 
-Phase 1 단일 종목 한정. universe / priority / cash_management는 후속 단계.
+Phase 10 step 020 — 복수 종목 입력 지원 (외부 리뷰 CR-003).
 
 신호일(signal_date) vs 체결일(execution_date) 분리 — 015 정합성 수정:
     next_open 체결 경로(신규 매수, exit_signal 매도)는 신호일과 체결일이
@@ -15,27 +15,51 @@ Phase 1 단일 종목 한정. universe / priority / cash_management는 후속 �
     사용한다. 갭/일중 stop·take/trailing/max_holding/cash_manager 강제
     매도는 today 즉시 체결이므로 signal_date == execution_date == today.
 
-흐름 (정확성 정책 13.16 우선순위 적용):
-    1. 거래정지 (volume=0) → skip
-    2. 보유 중이면:
-        a. update_market_price (current_price만 갱신, peak는 미변경)
-        b. exit_position 평가 — 갭 다운/업 분기 후 ConditionRegistry로 라우팅
+복수 종목 입력 (Phase 10 020):
+    run() 시그니처가 `prices: dict[str, pd.DataFrame] | pd.DataFrame`을
+    받는다. 단일 DataFrame을 그대로 넘기면 자동으로 `{config.symbol: df}`
+    로 wrap돼 015 이전과 동일하게 동작한다 (Phase 1 골든 fixture 호환).
+
+    `universe_resolver(today: date) -> list[str]`로 일별 active universe
+    를 동적으로 제어할 수 있다. 미지정 시 prices.keys() 전체를 모든 거래일
+    의 universe로 사용한다.
+
+    priority 알고리즘 / max_positions / max_daily_entries / event_log /
+    상장폐지 강제 매도는 본 step의 scope 밖. 후보 정렬은 symbol ASC만 — step
+    021이 priority 알고리즘으로 본 step의 정렬을 교체한다.
+
+흐름 (정확성 정책 13.16 우선순위 적용; 단일 종목 → N종목으로 일반화):
+    각 거래일 today에 다음 순서로 처리한다.
+
+    1. 보유 포지션 평가 (sorted(portfolio.positions.keys())로 결정론):
+        a. 그 종목의 today row가 없거나 거래정지(volume=0)면 skip
+        b. update_market_price (current_price만 갱신, peak는 미변경)
+        c. exit_position 평가 — 갭 다운/업 분기 후 ConditionRegistry로 라우팅
            (정렬: stop_loss → take_profit → trailing_stop → max_holding_days)
            → today 체결 (execution_date == today)
-        c. exit_signal True + next_date 존재 → 다음 거래일 시가 매도 (FIFO)
+        d. exit_signal True + next_date 존재 → 다음 거래일 시가 매도 (FIFO)
            → execution_date = next_date, signal_date = today
-        d. update_peak_price (그날 high를 peak에 반영, 다음날부터 적용)
-    3. 미보유 + final_entry_signal True + next_date 존재 → 다음 거래일 시가 매수
-       → execution_date = next_date, signal_date = today
-    4. 일별 자산 기록
+        e. update_peak_price (그날 high를 peak에 반영, 다음날부터 적용)
+
+    2. 신규 매수 후보 수집 (active universe × 미보유 × final_entry_signal True):
+        - active universe는 universe_resolver(today)가 결정 (미지정 시 prices.keys())
+        - 후보 정렬: symbol ASC tie-breaker (priority 알고리즘은 step 021)
+
+    3. 매수 처리 (정렬된 후보 순회 — max_positions 미적용, step 022 영역):
+        - 후보별로 _maybe_buy 호출
+        - cash 부족 시 그 후보부터 skip (CashManager가 enabled면 사전 확보 시도)
+
+    4. 일별 자산 기록 (Portfolio 전체 기준)
 
 마지막 봉(next_date == NaN)에서는 next_open 체결이 불가능하므로 신규 매수 /
 exit_signal 매도가 모두 skip된다. exit_position(갭/일중/trailing/max_holding)은
-당일 체결이므로 마지막 봉에서도 정상 평가된다.
+당일 체결이므로 마지막 봉에서도 정상 평가된다. 본 정책은 모든 종목에 일관 적용.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import date as date_type
 from typing import Any
 
 import pandas as pd
@@ -59,7 +83,7 @@ _EXIT_POSITION_PRIORITY: dict[str, int] = {
 
 
 class BacktestEngine:
-    """단일 종목 백테스트 엔진.
+    """단일/복수 종목 백테스트 엔진.
 
     StrategyEngine으로 신호를 생성하고, ExecutionModel로 체결가/비용을 계산하며,
     Portfolio에 매수/매도를 반영한다. exit_position 평가는 본 클래스가 직접 담당
@@ -82,21 +106,74 @@ class BacktestEngine:
         # cash_events 누적 (서비스가 영속화)
         self.cash_events: list[dict] = []
 
-    def run(self, df: pd.DataFrame) -> BacktestResult:
-        """단일 종목 df에 대해 백테스트를 실행하고 결과를 반환.
+    def run(
+        self,
+        prices: dict[str, pd.DataFrame] | pd.DataFrame,
+        universe_resolver: Callable[[date_type], list[str]] | None = None,
+    ) -> BacktestResult:
+        """단일 또는 복수 종목 시세에 대해 백테스트를 실행하고 결과를 반환.
 
-        df는 다음 컬럼을 가진다고 가정:
-            adj_open, adj_high, adj_low, adj_close, adj_volume
-            next_open, next_close (PriceLoader에서 미리 채움)
-            date 또는 인덱스가 datetime
+        Parameters
+        ----------
+        prices
+            - `pd.DataFrame` 단일 입력 시 자동으로 `{config.symbol: df}`로 wrap된다
+              (015 이전 호환성 — Phase 1 골든 fixture 그대로 통과).
+            - `dict[str, pd.DataFrame]` 입력 시 각 symbol에 대해 신호 생성 +
+              일별 루프에서 후보로 평가.
+            각 df는 다음 컬럼을 가진다고 가정:
+                adj_open, adj_high, adj_low, adj_close, adj_volume
+                next_open, next_close (PriceLoader에서 미리 채움)
+                date 컬럼 또는 인덱스가 datetime.
+            next_date 컬럼이 없으면 본 메서드가 채운다 (date만 1칸 shift; 가격/조건은
+            보지 않음 — look-ahead 차단).
+        universe_resolver
+            `(today: date) -> list[str]` 콜러블. 일별 active universe(매수 후보로
+            평가될 종목 집합)를 결정한다. 미지정 시 prices의 모든 종목을 매일 사용.
+            보유 포지션 평가는 universe_resolver와 무관하게 항상 portfolio.positions
+            전체를 평가한다 (이미 보유한 종목이 universe에서 빠져도 매도 평가는 진행).
 
-        next_date 컬럼이 없으면 본 메서드가 채운다 (date만 1칸 shift; 가격/조건은
-        보지 않음 — look-ahead 차단). 마지막 row의 next_date는 NaT가 되어
-        next_open 체결(신규 매수, exit_signal 매도)이 자동으로 skip된다.
+        Returns
+        -------
+        BacktestResult
+            기존 단일 종목 호출과 동일 인터페이스. trade_executions / daily_equity
+            / final_cash / final_equity 모두 채워짐.
+
+        Notes
+        -----
+        - 결정론: 종목 순회는 `sorted(...)`로 명시 정렬. dict 순회 의존 없음.
+        - look-ahead bias 차단: next_date는 미리 채우지만 본 row 평가에서 next 가격/
+          조건을 사용하지 않음. 매일 today를 기준으로 그 시점의 universe만 매수 후보.
+        - 후보 정렬: 본 step에서는 symbol ASC만. priority 알고리즘은 step 021에서
+          본 메서드의 후보 정렬 부분(_collect_entry_candidates)을 교체.
         """
-        df = self.strategy_engine.generate_signals(df)
-        df = self._ensure_next_date(df)
-        symbol = self.config.symbol
+        prices_dict = self._normalize_prices(prices)
+
+        # 종목별 신호 생성 + next_date 채우기.
+        signaled: dict[str, pd.DataFrame] = {}
+        for symbol in sorted(prices_dict.keys()):
+            df_sym = prices_dict[symbol]
+            df_sym = self.strategy_engine.generate_signals(df_sym)
+            df_sym = self._ensure_next_date(df_sym)
+            signaled[symbol] = df_sym
+
+        # 종목별 row 인덱스: today(date) → row(Series).
+        # 동일 date에 여러 row가 있으면 마지막 것을 사용 (입력 결손 방지 — 정상적인
+        # 데이터에서는 유일).
+        rows_by_date: dict[str, dict[date_type, pd.Series]] = {}
+        for symbol, df_sym in signaled.items():
+            row_map: dict[date_type, pd.Series] = {}
+            for idx in range(len(df_sym)):
+                row = df_sym.iloc[idx]
+                today = self._row_date(row, idx)
+                row_map[today] = row
+            rows_by_date[symbol] = row_map
+
+        # 전체 거래일: 모든 symbol df의 date 합집합 후 정렬.
+        all_dates: set[date_type] = set()
+        for row_map in rows_by_date.values():
+            all_dates.update(row_map.keys())
+        trading_dates = sorted(all_dates)
+
         exit_position_rules = self._get_exit_position_rules()
 
         result = BacktestResult(
@@ -105,77 +182,71 @@ class BacktestEngine:
 
         peak_equity = self.portfolio.initial_cash
 
-        for idx in range(len(df)):
-            row = df.iloc[idx]
-            today = self._row_date(row, idx)
-
+        for today in trading_dates:
             if today < self.config.start_date or today > self.config.end_date:
                 continue
 
-            if self.config.skip_no_volume and row["adj_volume"] == 0:
-                self._record_daily_equity(result, today, peak_equity)
-                peak_equity = max(peak_equity, self.portfolio.total_equity())
-                continue
-
-            # 보유 중 처리
-            if symbol in self.portfolio.positions:
-                # current_price만 갱신 (peak는 평가 후) — 13.3.5 / 13.15 look-ahead 방지
-                self.portfolio.update_market_price(symbol, float(row["adj_close"]))
-
-                # 1. exit_position 평가 (정확성 정책 13.3 + 03번 §4 — Registry 라우팅)
-                exit_info = self._evaluate_exit_position(
-                    self.portfolio.positions[symbol],
-                    row,
-                    exit_position_rules,
-                    today,
-                )
-                if exit_info is not None:
-                    exit_price, exit_reason, full_qty = exit_info
-                    self._process_sell_at_price(
-                        symbol=symbol,
-                        price=exit_price,
-                        quantity=full_qty,
-                        on_date=today,
-                        reason=exit_reason,
-                        result=result,
-                    )
-                    peak_equity = max(peak_equity, self.portfolio.total_equity())
-                    self._record_daily_equity(result, today, peak_equity)
-                    # 청산되었으면 peak 갱신 불필요
+            # === 1. 보유 포지션 평가 ===
+            # 015 흐름과 호환: today 시작 시점에 보유 중이던 종목만 매도 평가.
+            # 같은 today에 청산된 종목은 매수 후보로 다시 평가하지 않는다 (단일 종목
+            # 흐름이 `if/elif`로 매수와 매도를 상호 배타로 처리하던 의미를 보존 —
+            # Phase 1 골든 fixture 정합성 유지).
+            held_at_open = sorted(self.portfolio.positions.keys())
+            for symbol in held_at_open:
+                # 평가 도중 청산되었을 수 있으므로 재확인.
+                if symbol not in self.portfolio.positions:
                     continue
 
-                # 2. exit_signal 평가 → 다음 거래일 시가 매도
-                #    signal_date = today, execution_date = next_date.
-                #    next_date 또는 next_open이 NaT/NaN(마지막 봉 등)이면 skip.
-                next_date = self._next_date_or_none(row)
-                if (
-                    bool(row["exit_signal"])
-                    and not pd.isna(row.get("next_open"))
-                    and next_date is not None
-                ):
-                    self._process_sell_at_price(
-                        symbol=symbol,
-                        price=float(row["next_open"]),
-                        quantity=self.portfolio.positions[symbol].quantity,
-                        on_date=next_date,
-                        reason="exit_signal",
-                        result=result,
-                        signal_date=today,
-                    )
+                row_map = rows_by_date.get(symbol)
+                if row_map is None:
+                    # universe에는 없는 (이미 매수해서 보유 중인) 종목의 시세가
+                    # 없는 경우. 마지막 종가를 그대로 유지 (04번 §6 Step 2 준수).
+                    continue
+                row = row_map.get(today)
+                if row is None:
+                    # 그날 시세 결손 → 평가 불가. 마지막 종가 유지.
+                    continue
 
-                # 3. 평가 종료 후 그날 high를 peak에 반영 (다음날부터 trailing 적용)
+                if self.config.skip_no_volume and row["adj_volume"] == 0:
+                    # 거래정지 — 매수/매도 모두 skip (정확성 정책 13.4.4).
+                    continue
+
+                self._evaluate_held_symbol(
+                    symbol=symbol,
+                    row=row,
+                    today=today,
+                    exit_position_rules=exit_position_rules,
+                    result=result,
+                )
+
+            # === 2. 신규 매수 후보 수집 + 3. 매수 처리 ===
+            active_universe = self._resolve_active_universe(
+                today=today,
+                universe_resolver=universe_resolver,
+                prices_keys=signaled.keys(),
+            )
+            entry_candidates = self._collect_entry_candidates(
+                today=today,
+                active_universe=active_universe,
+                rows_by_date=rows_by_date,
+            )
+            held_at_open_set = set(held_at_open)
+            for symbol, row in entry_candidates:
+                # today 시작 시점에 보유 중이던 종목은 (같은 today에 청산되어
+                # 미보유가 되었어도) 매수 후보에서 제외 — 015 호환. allow_pyramiding
+                # 도입 시에도 이 의미는 유지되어야 한다 (같은 봉 회전 매매 방지).
+                if symbol in held_at_open_set:
+                    continue
+                # 보유 평가에서 다른 종목 매도로 청산된 자리 등에서도, 신규
+                # 매수 대상이 같은 today 동안 추가로 보유 종목이 되는 것은 가능.
+                # (예: A 매도 + B 신규 매수가 같은 today에 동시 발생.)
+                # Portfolio.buy의 allow_pyramiding=False 기본값이 이미 같은 종목
+                # 중복 매수를 차단한다.
                 if symbol in self.portfolio.positions:
-                    self.portfolio.update_peak_price(symbol, float(row["adj_high"]))
-
-            # 4. 미보유 + final_entry_signal → 다음 시가 매수
-            #    next_date 없으면(마지막 봉) 매수 skip.
-            elif (
-                bool(row["final_entry_signal"])
-                and not pd.isna(row.get("next_open"))
-                and self._next_date_or_none(row) is not None
-            ):
+                    continue
                 self._maybe_buy(symbol, row, today, result)
 
+            # === 4. 일별 자산 기록 ===
             peak_equity = max(peak_equity, self.portfolio.total_equity())
             self._record_daily_equity(result, today, peak_equity)
 
@@ -183,6 +254,145 @@ class BacktestEngine:
         result.final_equity = self.portfolio.total_equity()
         result.trade_executions = list(self.portfolio.trade_logs)
         return result
+
+    # === 입력 정규화 ===
+
+    def _normalize_prices(
+        self, prices: dict[str, pd.DataFrame] | pd.DataFrame
+    ) -> dict[str, pd.DataFrame]:
+        """단일 DataFrame은 `{config.symbol: df}`로 wrap. dict는 그대로 반환.
+
+        호환성 유지 — 015 이전의 단일 종목 호출 (`engine.run(df)`)이 그대로
+        동작하도록 한다. dict로 받으면 빈 dict 또는 잘못된 타입을 명시적으로
+        거부.
+        """
+        if isinstance(prices, pd.DataFrame):
+            return {self.config.symbol: prices}
+        if isinstance(prices, dict):
+            if not prices:
+                raise ValueError("prices dict가 비어 있습니다 — 매수할 종목이 없습니다")
+            for symbol, df in prices.items():
+                if not isinstance(df, pd.DataFrame):
+                    raise TypeError(
+                        f"prices['{symbol}']가 DataFrame이 아닙니다: {type(df).__name__}"
+                    )
+            return prices
+        raise TypeError(
+            f"prices는 DataFrame 또는 dict[str, DataFrame]이어야 합니다: "
+            f"{type(prices).__name__}"
+        )
+
+    # === 일별 루프 헬퍼 ===
+
+    def _evaluate_held_symbol(
+        self,
+        *,
+        symbol: str,
+        row: pd.Series,
+        today: date_type,
+        exit_position_rules: list[dict],
+        result: BacktestResult,
+    ) -> None:
+        """보유 종목 1개에 대해 today의 매도 평가 + peak 갱신.
+
+        흐름은 015 이전의 단일 종목 분기와 동일:
+            1. update_market_price (current_price만)
+            2. exit_position 평가 (갭/일중/trailing/max_holding) — today 체결
+            3. exit_signal True → next_open 매도 — execution_date = next_date
+            4. peak_price 갱신 (그날 high — 다음날부터 trailing 적용)
+        """
+        # 1. current_price만 갱신 (peak는 평가 후) — 13.3.5 / 13.15 look-ahead 방지
+        self.portfolio.update_market_price(symbol, float(row["adj_close"]))
+
+        # 2. exit_position 평가 (정확성 정책 13.3 + 03번 §4 — Registry 라우팅)
+        exit_info = self._evaluate_exit_position(
+            self.portfolio.positions[symbol],
+            row,
+            exit_position_rules,
+            today,
+        )
+        if exit_info is not None:
+            exit_price, exit_reason, full_qty = exit_info
+            self._process_sell_at_price(
+                symbol=symbol,
+                price=exit_price,
+                quantity=full_qty,
+                on_date=today,
+                reason=exit_reason,
+                result=result,
+            )
+            return  # 청산 후 peak 갱신 불필요
+
+        # 3. exit_signal 평가 → 다음 거래일 시가 매도
+        next_date = self._next_date_or_none(row)
+        if (
+            bool(row["exit_signal"])
+            and not pd.isna(row.get("next_open"))
+            and next_date is not None
+        ):
+            self._process_sell_at_price(
+                symbol=symbol,
+                price=float(row["next_open"]),
+                quantity=self.portfolio.positions[symbol].quantity,
+                on_date=next_date,
+                reason="exit_signal",
+                result=result,
+                signal_date=today,
+            )
+
+        # 4. 평가 종료 후 그날 high를 peak에 반영 (다음날부터 trailing 적용)
+        if symbol in self.portfolio.positions:
+            self.portfolio.update_peak_price(symbol, float(row["adj_high"]))
+
+    def _resolve_active_universe(
+        self,
+        *,
+        today: date_type,
+        universe_resolver: Callable[[date_type], list[str]] | None,
+        prices_keys,
+    ) -> list[str]:
+        """일별 active universe 결정.
+
+        universe_resolver가 주어지면 그 결과를 사용 (resolver 책임으로 정렬).
+        None이면 prices의 모든 종목을 매일 사용.
+        """
+        if universe_resolver is None:
+            return sorted(prices_keys)
+        resolved = universe_resolver(today)
+        # resolver는 list를 반환하지만 호출자가 결정론을 깨지 않도록 정렬 강제.
+        return sorted(resolved)
+
+    def _collect_entry_candidates(
+        self,
+        *,
+        today: date_type,
+        active_universe: list[str],
+        rows_by_date: dict[str, dict[date_type, pd.Series]],
+    ) -> list[tuple[str, pd.Series]]:
+        """active_universe 중 final_entry_signal=True인 후보를 (symbol, row)로 반환.
+
+        본 step에서는 symbol ASC tie-breaker만 적용. priority 알고리즘은 step 021
+        에서 본 메서드를 교체하여 도입한다. 따라서 본 메서드의 시그니처/위치를
+        다음 step이 참조한다.
+
+        결정론: active_universe는 sorted된 상태로 들어옴 (_resolve_active_universe
+        에서 강제). 본 메서드는 그 순서를 그대로 유지한다.
+        """
+        candidates: list[tuple[str, pd.Series]] = []
+        for symbol in active_universe:
+            row_map = rows_by_date.get(symbol)
+            if row_map is None:
+                continue
+            row = row_map.get(today)
+            if row is None:
+                continue
+            # 거래정지 종목은 매수 후보에서 제외 (정확성 정책 13.4.4).
+            if self.config.skip_no_volume and row["adj_volume"] == 0:
+                continue
+            if not bool(row["final_entry_signal"]):
+                continue
+            candidates.append((symbol, row))
+        return candidates
 
     # === 헬퍼 ===
 
@@ -355,14 +565,19 @@ class BacktestEngine:
         """매수 시도. 갭 초과 / 거래정지 / 예수금 부족(CashManager 시도) 시 skip.
 
         signal_date = today (신호 발생일), execution_date = next_date
-        (다음 거래일). cash_manager 강제 매도는 today 즉시 체결이므로 today를
-        그대로 전달한다.
+        (다음 거래일). cash_manager 강제 매도/매수는 그 시점에 즉시 체결되므로
+        today를 그대로 전달한다.
+
+        next_date 또는 next_open이 없는 경우(마지막 봉)는 본 메서드 진입 전에
+        호출자가 차단하지만, 방어적으로 한 번 더 체크한다.
         """
+        if pd.isna(row.get("next_open")):
+            return
+
         next_open = float(row["next_open"])
         prev_close = float(row["adj_close"])
         execution_date = self._next_date_or_none(row)
         if execution_date is None:
-            # 호출자가 이미 차단하지만 방어적으로 한 번 더 체크.
             return
 
         # 다음 거래일 거래정지 체크 (정확성 정책 13.4.2)
