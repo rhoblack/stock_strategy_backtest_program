@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user_id, get_db_session
-from app.schemas.strategy import StrategyCreate, StrategyOut, StrategyUpdate
+from app.schemas.strategy import StrategyCreate, StrategyOut, StrategyUpdate, StrategyVersionOut
 from app.services import strategy_service
 
 router = APIRouter(prefix="/api/strategies", tags=["strategies"])
@@ -112,3 +112,26 @@ def duplicate_strategy(
     return strategy_service.duplicate_strategy(
         session, strategy_id, user_id=user_id, new_name=new_name
     )
+
+
+@router.get(
+    "/{strategy_id}/versions",
+    response_model=list[StrategyVersionOut],
+    summary="전략 버전 이력 (10-m)",
+)
+def list_strategy_versions(
+    strategy_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
+    """GET /api/strategies/{strategy_id}/versions.
+
+    전략 버전 이력 목록을 version 오름차순으로 반환한다.
+    삭제된 전략도 버전 이력은 조회 가능 (allow_deleted=True).
+    user_id 스코프 강제: 본인 소유 전략만 (10번 9절).
+    존재하지 않거나 미소유 → STRATEGY_NOT_FOUND (404).
+    """
+    versions = strategy_service.list_strategy_versions(
+        session, strategy_id, user_id=user_id
+    )
+    return [StrategyVersionOut.from_orm_version(v) for v in versions]

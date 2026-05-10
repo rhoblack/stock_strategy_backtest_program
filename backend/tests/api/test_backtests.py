@@ -83,6 +83,11 @@ def test_trades_list(client):
     body = client.get(f"/api/backtests/{run['id']}/trades").json()
     # BUY 9건 + SELL 8건 = 9 trade_groups (1개 미청산)
     assert body["total_count"] == 9
+    # 페이지네이션 메타 확인 (10-p)
+    assert body["page"] == 1
+    assert "page_size" in body
+    assert "total_pages" in body
+    assert "has_next" in body
     first = body["items"][0]
     assert "executions" in first
     assert len(first["executions"]) >= 1

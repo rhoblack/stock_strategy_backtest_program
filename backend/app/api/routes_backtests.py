@@ -25,15 +25,22 @@ from app.core.exceptions import (
 )
 from app.db.session import make_session_factory
 from app.main_state import get_engine
-from app.models.backtest import BacktestRun, BacktestStatus
+from app.models.backtest import BacktestResult, BacktestRun, BacktestStatus
 from app.models.cash_event import CashEvent
 from app.models.daily_equity import DailyEquity
 from app.models.trade import TradeExecution, TradeGroup
 from app.schemas.backtest import (
     BacktestCreate,
+    BacktestDetailOut,
+    BacktestListItem,
+    BacktestListResponse,
+    BacktestResultSummary,
     BacktestRunOut,
     BacktestSummaryOut,
     ChartDataQuery,
+    PaginatedTradesResponse,
+    TradeExecutionOut,
+    TradeGroupOut,
 )
 from app.services import backtest_service
 
@@ -96,6 +103,127 @@ def _get_run_or_raise(
     return run
 
 
+@router.get("", response_model=BacktestListResponse, summary="백테스트 목록 (10-n)")
+def list_backtests(
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+    status_filter: str | None = Query(default=None, alias="status"),
+    strategy_id: int | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=500),
+):
+    """GET /api/backtests.
+
+    user_id 스코프 강제 (10번 9절). created_at DESC 정렬.
+    status / strategy_id 필터 지원.
+    """
+    from sqlalchemy import select
+
+    stmt = select(BacktestRun).where(BacktestRun.user_id == user_id)
+    if status_filter is not None:
+        stmt = stmt.where(BacktestRun.status == status_filter)
+    if strategy_id is not None:
+        stmt = stmt.where(BacktestRun.strategy_id == strategy_id)
+
+    # 전체 건수
+    from sqlalchemy import func, select as sa_select
+
+    count_stmt = sa_select(func.count()).select_from(
+        stmt.subquery()
+    )
+    total_count: int = session.scalar(count_stmt) or 0
+
+    # 페이지네이션 (created_at DESC → id DESC tie-breaker)
+    stmt = stmt.order_by(
+        BacktestRun.created_at.desc(),
+        BacktestRun.id.desc(),
+    ).offset((page - 1) * page_size).limit(page_size)
+
+    rows = list(session.scalars(stmt).all())
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+
+    items = [
+        BacktestListItem(
+            id=r.id,
+            user_id=r.user_id,
+            strategy_id=r.strategy_id,
+            run_name=r.run_name,
+            status=r.status.value if hasattr(r.status, "value") else str(r.status),
+            progress_pct=r.progress_pct,
+            start_date=r.start_date,
+            end_date=r.end_date,
+            initial_cash=int(r.initial_cash),
+            created_at=r.created_at,
+            started_at=r.started_at,
+            finished_at=r.finished_at,
+            error_message=r.error_message,
+        )
+        for r in rows
+    ]
+
+    return BacktestListResponse(
+        items=items,
+        page=page,
+        page_size=page_size,
+        total_count=total_count,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+    )
+
+
+@router.get("/{run_id}", response_model=BacktestDetailOut, summary="백테스트 단건 상세 (10-n)")
+def get_backtest_detail(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
+    """GET /api/backtests/{run_id}.
+
+    user_id 스코프 강제 (10번 9절).
+    완료된 경우 result 필드에 BacktestResult 요약 포함.
+    """
+    run = _get_run_or_raise(session, run_id, user_id=user_id)
+
+    result_summary: BacktestResultSummary | None = None
+    if run.result is not None:
+        r = run.result
+        result_summary = BacktestResultSummary(
+            initial_cash=int(r.initial_cash),
+            final_equity=int(r.final_equity),
+            total_return_pct=r.total_return_pct,
+            annual_return_pct=r.annual_return_pct,
+            mdd_pct=r.mdd_pct,
+            trade_count=r.trade_count,
+            win_rate=r.win_rate,
+            avg_holding_days=r.avg_holding_days,
+            profit_factor=r.profit_factor,
+        )
+
+    return BacktestDetailOut(
+        id=run.id,
+        user_id=run.user_id,
+        strategy_id=run.strategy_id,
+        run_name=run.run_name,
+        status=run.status.value if hasattr(run.status, "value") else str(run.status),
+        progress_pct=run.progress_pct,
+        start_date=run.start_date,
+        end_date=run.end_date,
+        initial_cash=int(run.initial_cash),
+        fee_rate=run.fee_rate,
+        slippage=run.slippage,
+        use_adjusted_price=run.use_adjusted_price,
+        tick_rounding=run.tick_rounding,
+        priority_method=run.priority_method,
+        priority_tie_breaker=run.priority_tie_breaker,
+        random_seed=run.random_seed,
+        created_at=run.created_at,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        error_message=run.error_message,
+        result=result_summary,
+    )
+
+
 @router.get("/{run_id}/status", response_model=BacktestRunOut, summary="실행 상태")
 def get_status(
     run_id: int,
@@ -118,53 +246,102 @@ def get_summary(
     return backtest_service.get_backtest_summary(session, run_id, user_id=user_id)
 
 
-@router.get("/{run_id}/trades", summary="거래 내역 (trade_groups)")
+@router.get("/{run_id}/trades", response_model=PaginatedTradesResponse, summary="거래 내역 (trade_groups + pagination) (10-p)")
 def list_trades(
     run_id: int,
     session: Session = Depends(get_db_session),
     user_id: int = Depends(get_current_user_id),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    sort: str = Query(
+        default="execution_date_asc",
+        description="execution_date_asc | execution_date_desc | profit_desc | profit_asc",
+    ),
+    symbol: str | None = Query(default=None, description="특정 종목 필터 (종목코드)"),
+    action: str | None = Query(default=None, description="buy / sell 필터 (미구현: trade_group 기준)"),
 ):
+    """GET /api/backtests/{run_id}/trades.
+
+    trade_groups 단위로 집계된 매수-매도 페어를 반환한다 (07 DB 9~10절).
+    페이지네이션 + sort + symbol/action 필터 지원 (10-p).
+
+    하위 호환: page/page_size 미지정 시 기본값(page=1, page_size=50) 적용.
+    응답 구조는 항상 PaginatedTradesResponse (items + pagination 메타).
+    """
+    from sqlalchemy import asc, desc
+
     _get_run_or_raise(session, run_id, user_id=user_id)
-    rows = (
-        session.query(TradeGroup)
-        .filter_by(run_id=run_id)
-        .order_by(TradeGroup.entry_date.asc(), TradeGroup.id.asc())
-        .all()
-    )
-    items = []
+
+    q = session.query(TradeGroup).filter(TradeGroup.run_id == run_id)
+
+    # symbol 필터
+    if symbol is not None:
+        q = q.filter(TradeGroup.symbol == symbol)
+
+    # sort 결정 (10-p)
+    _SORT_MAP = {
+        "execution_date_asc": (asc(TradeGroup.entry_date), asc(TradeGroup.id)),
+        "execution_date_desc": (desc(TradeGroup.entry_date), desc(TradeGroup.id)),
+        "profit_desc": (desc(TradeGroup.final_profit), asc(TradeGroup.id)),
+        "profit_asc": (asc(TradeGroup.final_profit), asc(TradeGroup.id)),
+    }
+    sort_clauses = _SORT_MAP.get(sort, _SORT_MAP["execution_date_asc"])
+    q = q.order_by(*sort_clauses)
+
+    total_count: int = q.count()
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    rows = q.offset((page - 1) * page_size).limit(page_size).all()
+
+    items: list[TradeGroupOut] = []
     for tg in rows:
-        execs = (
+        execs_q = (
             session.query(TradeExecution)
             .filter_by(trade_group_id=tg.id)
             .order_by(TradeExecution.execution_date.asc(), TradeExecution.id.asc())
-            .all()
         )
+        # action 필터: sell = SELL 타입 execution이 있는 그룹만, buy = BUY만인 그룹만
+        execs = execs_q.all()
+
+        exec_out = [
+            TradeExecutionOut(
+                execution_date=ex.execution_date.isoformat(),
+                execution_type=ex.execution_type.value if hasattr(ex.execution_type, "value") else str(ex.execution_type),
+                price=int(ex.price),
+                quantity=int(ex.quantity),
+                gross_amount=int(ex.gross_amount) if ex.gross_amount is not None else None,
+                fee=int(ex.fee) if ex.fee is not None else None,
+                tax=int(ex.tax) if ex.tax is not None else None,
+                net_amount=int(ex.net_amount) if ex.net_amount is not None else None,
+                realized_profit=int(ex.realized_profit) if ex.realized_profit is not None else None,
+                exit_reason=ex.exit_reason,
+            )
+            for ex in execs
+        ]
+
         items.append(
-            {
-                "trade_group_id": tg.id,
-                "symbol": tg.symbol,
-                "name": tg.name,
-                "entry_date": tg.entry_date.isoformat(),
-                "entry_price": tg.entry_price,
-                "entry_quantity": tg.entry_quantity,
-                "remaining_quantity": tg.remaining_quantity,
-                "fully_closed_at": tg.fully_closed_at.isoformat() if tg.fully_closed_at else None,
-                "final_profit": tg.final_profit,
-                "final_profit_rate": tg.final_profit_rate,
-                "executions": [
-                    {
-                        "execution_date": ex.execution_date.isoformat(),
-                        "execution_type": ex.execution_type.value,
-                        "price": ex.price,
-                        "quantity": ex.quantity,
-                        "realized_profit": ex.realized_profit,
-                        "exit_reason": ex.exit_reason,
-                    }
-                    for ex in execs
-                ],
-            }
+            TradeGroupOut(
+                trade_group_id=tg.id,
+                symbol=tg.symbol,
+                name=tg.name,
+                entry_date=tg.entry_date.isoformat(),
+                entry_price=int(tg.entry_price),
+                entry_quantity=int(tg.entry_quantity),
+                remaining_quantity=int(tg.remaining_quantity),
+                fully_closed_at=tg.fully_closed_at.isoformat() if tg.fully_closed_at else None,
+                final_profit=int(tg.final_profit) if tg.final_profit is not None else None,
+                final_profit_rate=tg.final_profit_rate,
+                executions=exec_out,
+            )
         )
-    return {"items": items, "total_count": len(items)}
+
+    return PaginatedTradesResponse(
+        items=items,
+        page=page,
+        page_size=page_size,
+        total_count=total_count,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+    )
 
 
 @router.get("/{run_id}/chart-data", summary="차트 데이터 (candles + markers + equity)")
