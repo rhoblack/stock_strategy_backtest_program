@@ -10,6 +10,7 @@ condition_registry에 자동 등록된다.
 # 조건 모듈 import (자동 등록 트리거)
 from app.strategy.conditions import (  # noqa: F401
     breakout,
+    candle,
     exit_position,
     macd,
     moving_average,
