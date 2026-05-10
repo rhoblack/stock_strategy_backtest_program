@@ -27,7 +27,11 @@ from app.backtest.config import BacktestConfig
 from app.backtest.engine import BacktestEngine
 from app.backtest.execution import ExecutionModel
 from app.backtest.metrics import calculate_metrics
-from app.core.cancellation import BacktestCancelledError, cancel_run, register_token, unregister_token
+from app.core.cancellation import (
+    BacktestCancelledError,
+    register_token,
+    unregister_token,
+)
 from app.core.exceptions import BacktestRunNotFoundError
 from app.market_data import repositories as market_repos
 from app.models.backtest import BacktestResult, BacktestRun

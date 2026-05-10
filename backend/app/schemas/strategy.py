@@ -16,7 +16,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.strategy_json import validate_strategy_json
 
-
 # ── 전략 버전 이력 스키마 (10-m / 10번 2절)
 
 class StrategyVersionOut(BaseModel):
@@ -32,7 +31,7 @@ class StrategyVersionOut(BaseModel):
     strategy_json_summary: dict  # 조건 개수 요약 (entry/exit_position 조건 수)
 
     @classmethod
-    def from_orm_version(cls, v: Any) -> "StrategyVersionOut":
+    def from_orm_version(cls, v: Any) -> StrategyVersionOut:
         """StrategyVersion ORM 인스턴스 → StrategyVersionOut 변환.
 
         strategy_json_summary는 ORM 컬럼이 아니므로 직접 계산.

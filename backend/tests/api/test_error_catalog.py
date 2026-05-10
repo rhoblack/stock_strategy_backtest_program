@@ -46,7 +46,6 @@ from app.core.exceptions import (
 )
 from app.main import app
 
-
 # ============================================================================
 # 10번 §7.1 카탈로그 완전성 검증
 # ============================================================================
@@ -226,7 +225,6 @@ def test_banned_codes_not_in_status_map():
 
 def test_pydantic_validation_error_uses_invalid_parameter_value(db_engine):  # noqa: ARG001
     """전략/백테스트 외 경로의 Pydantic 검증 실패 → INVALID_PARAMETER_VALUE."""
-    client = TestClient(app)
     # market symbols 등 쿼리 파라미터 검증 실패 (잘못된 타입 등)
     # 여기서는 직접 AppError를 발생시키는 API를 테스트하는 대신
     # 에러 핸들러 동작을 직접 검증

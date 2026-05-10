@@ -273,11 +273,6 @@ def test_13_17_5_zero_volume_day_skips_entry():
     """
     dates = [date(2024, 1, d) for d in (10, 11, 12, 15, 16)]
     # Day1에 entry True (110 > MA), Day2 next_volume=0 → 매수 skip
-    df = _make_df(
-        dates,
-        closes=[100, 110, 110, 110, 110],
-        volumes=[10_000, 10_000, 0, 10_000, 10_000],
-    )
     # 강제로 next_volume을 volume 기준으로 재구성 (shift(-1))
     import pandas as pd
     vol = [10_000, 10_000, 0, 10_000, 10_000]

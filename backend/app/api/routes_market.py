@@ -24,7 +24,6 @@ user_id 스코프:
 from __future__ import annotations
 
 from datetime import date as date_type
-from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_
@@ -182,10 +181,9 @@ def get_calendar(
     trading_calendar 테이블에서 해당 연/월/시장의 거래일/휴장일 목록을 반환.
     is_trading_day=True/False 모두 포함 (프론트가 달력 UI 생성용).
     """
-    from datetime import date as date_cls
-
     # 해당 월의 첫날 ~ 마지막날
     import calendar as cal_mod
+    from datetime import date as date_cls
 
     last_day = cal_mod.monthrange(year, month)[1]
     month_start = date_cls(year, month, 1)

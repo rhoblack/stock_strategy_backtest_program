@@ -18,7 +18,6 @@ BacktestEngine.run()에 cancel_token 파라미터로 주입하면,
 from __future__ import annotations
 
 import threading
-from typing import Dict, Optional
 
 
 class BacktestCancelledError(Exception):
@@ -64,7 +63,7 @@ class CancellationToken:
 # 프로세스 내 싱글턴. 다중 프로세스 환경으로 전환 시 교체 필요.
 
 _registry_lock = threading.Lock()
-_registry: Dict[int, CancellationToken] = {}
+_registry: dict[int, CancellationToken] = {}
 
 
 def register_token(run_id: int) -> CancellationToken:
@@ -78,7 +77,7 @@ def register_token(run_id: int) -> CancellationToken:
     return token
 
 
-def get_token(run_id: int) -> Optional[CancellationToken]:
+def get_token(run_id: int) -> CancellationToken | None:
     """등록된 CancellationToken을 반환. 없으면 None."""
     with _registry_lock:
         return _registry.get(run_id)

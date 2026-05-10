@@ -149,7 +149,7 @@ def test_export_symbol_performance_total_profit_is_int(client):
     run_id = _setup(client)
     r = client.get(f"/api/backtests/{run_id}/export/symbol-performance")
     text = r.content.decode("utf-8-sig")
-    lines = [l for l in text.splitlines() if l.strip()]
+    lines = [line for line in text.splitlines() if line.strip()]
     if len(lines) > 1:
         # 헤더에서 total_profit 인덱스
         headers = lines[0].split(",")
@@ -166,7 +166,7 @@ def test_export_symbol_performance_sorted_by_total_profit_desc(client):
     run_id = _setup(client)
     r = client.get(f"/api/backtests/{run_id}/export/symbol-performance")
     text = r.content.decode("utf-8-sig")
-    lines = [l for l in text.splitlines() if l.strip()]
+    lines = [line for line in text.splitlines() if line.strip()]
     if len(lines) <= 2:
         return  # 종목 1개 이하이면 정렬 검증 불가
     headers = lines[0].split(",")
@@ -208,7 +208,7 @@ def test_export_universe_history_empty_when_no_data(client):
     r = client.get(f"/api/backtests/{run_id}/export/universe-history")
     assert r.status_code == 200
     text = r.content.decode("utf-8-sig")
-    lines = [l for l in text.splitlines() if l.strip()]
+    lines = [line for line in text.splitlines() if line.strip()]
     # 헤더 1줄만 있어야 함 (데이터 없음)
     assert len(lines) == 1, f"예상 헤더 1줄, 실제 {len(lines)}줄"
 

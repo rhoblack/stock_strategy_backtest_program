@@ -10,23 +10,20 @@
 
 from __future__ import annotations
 
-import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy.orm import Session
 
 from app.models.backtest import BacktestRun, BacktestStatus
 from app.models.strategy import Strategy
-from app.models.trade import TradeExecution, TradeGroup
-from app.models.enums import TradeExecutionType
+from app.models.trade import TradeGroup
 from app.models.universe_history import UniverseHistory
 from app.services.csv_exporter import (
+    _to_bytes,
     export_symbol_performance_csv,
     export_universe_history_csv,
-    _to_bytes,
 )
-
 
 # ─── 공통 픽스처 ────────────────────────────────────────────────────────────
 
@@ -92,7 +89,7 @@ def backtest_run(db_session, user, strategy):
         tax_rate_json=0.0,
         slippage=0.0,
         status=BacktestStatus.COMPLETED,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db_session.add(run)
     db_session.commit()
@@ -106,7 +103,7 @@ def _add_trade_group(db_session, run_id, symbol, name, entry_price, entry_qty,
                      final_profit, final_profit_rate, holding_days=5):
     """완전 청산 TradeGroup 생성 헬퍼."""
     entry_dt = date(2024, 2, 1)
-    closed_at = datetime(2024, 2, 1 + holding_days, tzinfo=timezone.utc)
+    closed_at = datetime(2024, 2, 1 + holding_days, tzinfo=UTC)
     tg = TradeGroup(
         run_id=run_id,
         symbol=symbol,
@@ -118,7 +115,7 @@ def _add_trade_group(db_session, run_id, symbol, name, entry_price, entry_qty,
         fully_closed_at=closed_at,
         final_profit=final_profit,
         final_profit_rate=final_profit_rate,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db_session.add(tg)
     db_session.commit()
@@ -140,13 +137,13 @@ class TestSymbolPerformanceCsv:
 
         content = export_symbol_performance_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
 
         # 헤더 + 삼성전자 1행
         assert len(lines) == 2, f"행 수 불일치: {lines}"
         headers = lines[0].split(",")
         vals = lines[1].split(",")
-        row = dict(zip(headers, vals))
+        row = dict(zip(headers, vals, strict=False))
 
         assert row["symbol"] == "005930"
         assert int(row["trade_count"]) == 2
@@ -164,7 +161,7 @@ class TestSymbolPerformanceCsv:
 
         content = export_symbol_performance_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
 
         assert len(lines) == 3  # 헤더 + 2 종목
         headers = lines[0].split(",")
@@ -183,7 +180,7 @@ class TestSymbolPerformanceCsv:
 
         content = export_symbol_performance_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
         headers = lines[0].split(",")
         tp_idx = headers.index("total_profit")
         tp_val = lines[1].split(",")[tp_idx]
@@ -206,14 +203,14 @@ class TestSymbolPerformanceCsv:
             remaining_quantity=3,   # 미청산
             final_profit=None,
             final_profit_rate=None,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db_session.add(tg_open)
         db_session.commit()
 
         content = export_symbol_performance_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
 
         # 청산 1건만 집계 → 삼성전자 1행만
         assert len(lines) == 2, f"미청산이 포함된 것으로 보임: {lines}"
@@ -224,7 +221,7 @@ class TestSymbolPerformanceCsv:
         """거래가 없으면 헤더만 있는 CSV."""
         content = export_symbol_performance_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
         assert len(lines) == 1  # 헤더만
 
     def test_avg_holding_days(self, db_session, backtest_run):
@@ -236,7 +233,7 @@ class TestSymbolPerformanceCsv:
 
         content = export_symbol_performance_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
         headers = lines[0].split(",")
         hd_idx = headers.index("avg_holding_days")
         avg_hd = float(lines[1].split(",")[hd_idx])
@@ -257,7 +254,7 @@ class TestUniverseHistoryCsv:
             config_json={"top_n": len(symbols)},
             config_hash=None,
             symbols_json=symbols,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db_session.add(uh)
         db_session.commit()
@@ -272,7 +269,7 @@ class TestUniverseHistoryCsv:
 
         content = export_universe_history_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
 
         # 헤더 + 3 데이터 행
         assert len(lines) == 4, f"헤더+3행 기대, 실제 {lines}"
@@ -285,7 +282,7 @@ class TestUniverseHistoryCsv:
 
         content = export_universe_history_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
 
         # 헤더 + 2 + 3 = 6행
         assert len(lines) == 6, f"헤더+5행 기대, 실제 {lines}"
@@ -298,7 +295,7 @@ class TestUniverseHistoryCsv:
 
         content = export_universe_history_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
 
         headers = lines[0].split(",")
         rank_idx = headers.index("rank")
@@ -312,7 +309,7 @@ class TestUniverseHistoryCsv:
         """universe_history 없으면 헤더만."""
         content = export_universe_history_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
         assert len(lines) == 1
 
     def test_date_column_format(self, db_session, backtest_run):
@@ -323,7 +320,7 @@ class TestUniverseHistoryCsv:
 
         content = export_universe_history_csv(db_session, backtest_run, encoding="utf-8-bom")
         text = content.decode("utf-8-sig")
-        lines = [l for l in text.splitlines() if l.strip()]
+        lines = [line for line in text.splitlines() if line.strip()]
         headers = lines[0].split(",")
         date_idx = headers.index("date")
         date_val = lines[1].split(",")[date_idx]
@@ -345,7 +342,7 @@ class TestUniverseHistoryCsv:
             tax_rate_json=0.0,
             slippage=0.0,
             status=BacktestStatus.COMPLETED,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db_session.add(other_run)
         db_session.commit()
@@ -359,7 +356,7 @@ class TestUniverseHistoryCsv:
             selection_method="ALL",
             config_json={},
             symbols_json=["999999"],  # 구별용 심볼
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db_session.add(other_uh)
         # 현재 run의 universe
@@ -370,7 +367,7 @@ class TestUniverseHistoryCsv:
             selection_method="ALL",
             config_json={},
             symbols_json=["005930"],
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db_session.add(own_uh)
         db_session.commit()

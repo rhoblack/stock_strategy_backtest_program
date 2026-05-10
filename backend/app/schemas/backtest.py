@@ -8,7 +8,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ── 페이지네이션 표준 (10번 10절)
 
 class PaginationMeta(BaseModel):

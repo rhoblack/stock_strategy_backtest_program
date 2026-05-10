@@ -92,7 +92,7 @@ import pandas as pd
 from app.backtest.config import BacktestConfig
 from app.backtest.execution import ExecutionModel
 from app.backtest.result import BacktestResult, DailyEquity
-from app.core.cancellation import BacktestCancelledError, CancellationToken
+from app.core.cancellation import CancellationToken
 from app.portfolio.portfolio import Portfolio
 from app.strategy.engine import StrategyEngine
 from app.strategy.registry import condition_registry

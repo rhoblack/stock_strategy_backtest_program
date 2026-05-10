@@ -128,7 +128,6 @@ def test_trades_has_next_false_on_last_page(client):
     run = _make_run(client)
     # 전체 건수 파악
     r_all = client.get(f"/api/backtests/{run['id']}/trades")
-    total = r_all.json()["total_count"]
 
     # page=total_pages 요청
     total_pages = r_all.json()["total_pages"]

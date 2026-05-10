@@ -25,7 +25,7 @@ from app.core.exceptions import (
 )
 from app.db.session import make_session_factory
 from app.main_state import get_engine
-from app.models.backtest import BacktestResult, BacktestRun, BacktestStatus
+from app.models.backtest import BacktestRun, BacktestStatus
 from app.models.cash_event import CashEvent
 from app.models.daily_equity import DailyEquity
 from app.models.trade import TradeExecution, TradeGroup
@@ -126,7 +126,8 @@ def list_backtests(
         stmt = stmt.where(BacktestRun.strategy_id == strategy_id)
 
     # 전체 건수
-    from sqlalchemy import func, select as sa_select
+    from sqlalchemy import func
+    from sqlalchemy import select as sa_select
 
     count_stmt = sa_select(func.count()).select_from(
         stmt.subquery()
