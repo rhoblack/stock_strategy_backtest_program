@@ -1,6 +1,11 @@
 """CSV / ZIP Export (설계서 09번).
 
 UTF-8 with BOM 기본 (Excel 호환). KRW 통화는 정수.
+
+encoding 옵션 (09-l):
+    "utf-8-bom"  (기본값) — UTF-8 with BOM, Excel 한글 호환
+    "utf-8"       — BOM 없는 UTF-8
+    "cp949"       — EUC-KR 계열, 구형 Excel 호환
 """
 
 from __future__ import annotations
@@ -9,6 +14,7 @@ import csv
 import io
 import json
 import zipfile
+from typing import Literal
 
 from sqlalchemy.orm import Session
 
@@ -16,11 +22,42 @@ from app.models.backtest import BacktestRun
 from app.models.cash_event import CashEvent
 from app.models.daily_equity import DailyEquity
 from app.models.trade import TradeExecution, TradeGroup
+from app.models.universe_history import UniverseHistory
 
-UTF8_BOM = "﻿"
+# 지원 encoding 리터럴
+CsvEncoding = Literal["utf-8-bom", "utf-8", "cp949"]
+
+UTF8_BOM = "\ufeff"  # BOM 문자 (U+FEFF)
+
+# encoding → (Python codec, BOM prefix bytes)
+_ENCODING_MAP: dict[str, tuple[str, bytes]] = {
+    "utf-8-bom": ("utf-8", b"\xef\xbb\xbf"),
+    "utf-8": ("utf-8", b""),
+    "cp949": ("cp949", b""),
+}
+
+
+def _to_bytes(rows: list[dict], fieldnames: list[str], encoding: CsvEncoding = "utf-8-bom") -> bytes:
+    """CSV를 지정 encoding으로 인코딩한 bytes 반환.
+
+    - "utf-8-bom": BOM(EF BB BF) + UTF-8 본문
+    - "utf-8": BOM 없는 UTF-8
+    - "cp949": CP949 인코딩 (구형 Excel)
+    """
+    codec, bom = _ENCODING_MAP.get(encoding, _ENCODING_MAP["utf-8-bom"])
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({k: row.get(k, "") for k in fieldnames})
+
+    body = buf.getvalue().encode(codec)
+    return bom + body
 
 
 def _to_csv(rows: list[dict], fieldnames: list[str]) -> str:
+    """기존 호환: UTF-8 BOM 포함 str 반환."""
     buf = io.StringIO()
     buf.write(UTF8_BOM)
     writer = csv.DictWriter(buf, fieldnames=fieldnames)
@@ -143,18 +180,159 @@ def export_cash_events_csv(session: Session, run: BacktestRun) -> str:
     )
 
 
+def export_symbol_performance_csv(
+    session: Session,
+    run: BacktestRun,
+    encoding: CsvEncoding = "utf-8-bom",
+) -> bytes:
+    """종목별 성과 집계 CSV (09번 §7, 09-i).
+
+    trade_groups를 symbol 기준으로 집계:
+        - trade_count: 완전 청산된 TradeGroup 수 (remaining_quantity == 0)
+        - win_count: final_profit > 0 인 건수
+        - win_rate: win_count / trade_count * 100 (%, 소수 첫째)
+        - total_profit: final_profit 합계 (KRW 정수)
+        - avg_profit_rate: final_profit_rate 평균 (%, 소수 둘째)
+        - max_profit_rate: final_profit_rate 최대
+        - max_loss_rate: final_profit_rate 최소 (음수)
+        - avg_holding_days: 보유일 평균 (소수 첫째)
+
+    정렬: total_profit DESC (09번 §7 명시)
+    미청산 TradeGroup(remaining_quantity > 0)은 집계에서 제외.
+    """
+    tgs = (
+        session.query(TradeGroup)
+        .filter(
+            TradeGroup.run_id == run.id,
+            TradeGroup.remaining_quantity == 0,  # 완전 청산된 건만
+        )
+        .order_by(TradeGroup.symbol.asc(), TradeGroup.id.asc())
+        .all()
+    )
+
+    # symbol별로 집계
+    perf: dict[str, dict] = {}
+    for tg in tgs:
+        sym = tg.symbol
+        if sym not in perf:
+            perf[sym] = {
+                "symbol": sym,
+                "name": tg.name,
+                "trade_count": 0,
+                "win_count": 0,
+                "total_profit": 0,
+                "_profit_rates": [],
+                "_holding_days": [],
+            }
+        bucket = perf[sym]
+        bucket["trade_count"] += 1
+        profit = tg.final_profit or 0
+        bucket["total_profit"] += profit
+        if profit > 0:
+            bucket["win_count"] += 1
+        if tg.final_profit_rate is not None:
+            bucket["_profit_rates"].append(tg.final_profit_rate)
+
+        # 보유일 계산: fully_closed_at(date 부분) - entry_date
+        if tg.fully_closed_at is not None:
+            closed_date = tg.fully_closed_at.date() if hasattr(tg.fully_closed_at, "date") else tg.fully_closed_at
+            holding = (closed_date - tg.entry_date).days
+            bucket["_holding_days"].append(holding)
+
+    rows: list[dict] = []
+    for bucket in perf.values():
+        tc = bucket["trade_count"]
+        wc = bucket["win_count"]
+        rates = bucket["_profit_rates"]
+        holding = bucket["_holding_days"]
+        rows.append({
+            "symbol": bucket["symbol"],
+            "name": bucket["name"],
+            "trade_count": tc,
+            "win_rate": round(wc / tc * 100, 1) if tc > 0 else 0.0,
+            "total_profit": int(bucket["total_profit"]),
+            "avg_profit_rate": round(sum(rates) / len(rates), 2) if rates else 0.0,
+            "max_profit_rate": round(max(rates), 2) if rates else 0.0,
+            "max_loss_rate": round(min(rates), 2) if rates else 0.0,
+            "avg_holding_days": round(sum(holding) / len(holding), 1) if holding else 0.0,
+        })
+
+    # total_profit DESC 정렬
+    rows.sort(key=lambda r: r["total_profit"], reverse=True)
+
+    fieldnames = [
+        "symbol", "name", "trade_count", "win_rate",
+        "total_profit", "avg_profit_rate", "max_profit_rate",
+        "max_loss_rate", "avg_holding_days",
+    ]
+    return _to_bytes(rows, fieldnames, encoding)
+
+
+def export_universe_history_csv(
+    session: Session,
+    run: BacktestRun,
+    encoding: CsvEncoding = "utf-8-bom",
+) -> bytes:
+    """유니버스 이력 CSV (09번 §9, 09-j).
+
+    universe_history 테이블에서 run_id 기준으로 조회하고,
+    symbols_json(list[str])을 행 단위로 전개: (date, symbol) 1:N.
+
+    출력 컬럼: date, market, selection_method, rank, symbol
+        - symbol_name, market_cap, trading_value는 현재 UniverseHistory 모델에
+          없으므로 빈 값("")으로 출력.
+        - rank는 symbols_json 내 0-base 인덱스 + 1 (저장 시 ASC 정렬이므로
+          순위는 알 수 없음 — index 순서로 표시).
+    """
+    histories = (
+        session.query(UniverseHistory)
+        .filter(UniverseHistory.run_id == run.id)
+        .order_by(UniverseHistory.as_of_date.asc(), UniverseHistory.id.asc())
+        .all()
+    )
+
+    rows: list[dict] = []
+    for hist in histories:
+        symbols: list[str] = hist.symbols_json or []
+        for rank, symbol in enumerate(symbols, start=1):
+            rows.append({
+                "date": hist.as_of_date.isoformat(),
+                "market": hist.market,
+                "selection_method": hist.selection_method,
+                "rank": rank,
+                "symbol": symbol,
+                "name": "",          # 모델에 없음 — 빈 값
+                "market_cap": "",    # 모델에 없음 — 빈 값
+                "trading_value": "", # 모델에 없음 — 빈 값
+            })
+
+    fieldnames = [
+        "date", "market", "selection_method", "rank",
+        "symbol", "name", "market_cap", "trading_value",
+    ]
+    return _to_bytes(rows, fieldnames, encoding)
+
+
 def export_strategy_snapshot_json(run: BacktestRun) -> str:
     return json.dumps(run.strategy_snapshot_json, ensure_ascii=False, indent=2)
 
 
 def export_zip(session: Session, run: BacktestRun) -> bytes:
-    """5개 CSV + strategy_snapshot.json을 ZIP으로 묶음."""
+    """7개 파일 + strategy_snapshot.json을 ZIP으로 묶음 (09-k)."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("summary.csv", export_summary_csv(session, run))
         zf.writestr("trades.csv", export_trades_csv(session, run))
         zf.writestr("daily_equity.csv", export_daily_equity_csv(session, run))
         zf.writestr("cash_events.csv", export_cash_events_csv(session, run))
+        zf.writestr(
+            "symbol_performance.csv",
+            export_symbol_performance_csv(session, run, encoding="utf-8-bom"),
+        )
+        zf.writestr(
+            "universe_history.csv",
+            export_universe_history_csv(session, run, encoding="utf-8-bom"),
+        )
         zf.writestr(
             "strategy_snapshot.json",
             export_strategy_snapshot_json(run),

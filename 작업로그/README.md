@@ -92,6 +92,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [035-export-enhancements](./2026-05-10-035-export-enhancements.md) | 13 | backend-api-engineer | ✅ | **09-i·j·k·l 해소**: symbol_performance.csv + universe_history.csv + /export/* 분리 라우팅 + encoding 옵션 — 916 PASS |
 | 2026-05-10 | [034-krw-decimal-orderby](./2026-05-10-034-krw-decimal-orderby.md) | 13 | backtest-engine-developer + backend-api-engineer | ✅ | **13-s·13-t 해소**: KRW int 전환(32건) + ORDER BY 표준화(9건) — 885 PASS |
 | 2026-05-10 | [phase12-test-engineer-verification](./2026-05-10-phase12-test-engineer-verification.md) | 12 | test-engineer | ✅ | **Phase 12 완료 검증 🟢 ship-go**: 백엔드 844 PASS (+19) / 프론트엔드 162 PASS (+119) / 13.x·02.x acceptance 모두 통과 / 골든 9지표 유지 / e2e 5건 신규 |
 | 2026-05-10 | [033-table-universe-compare](./2026-05-10-033-table-universe-compare.md) | 12 | frontend-developer | ✅ | **08-m + 11-f·g·h 해소 / Phase 12 마지막 step**: TanStack Table v8(거래 탭 정렬/필터/페이징) + 거래 클릭 차트 이동(setVisibleRange) + UniverseSelector UI(019 백엔드 활용 + MANUAL fallback) + StrategyComparePage 골격 + components/layout·ui·hooks·utils 정합화 + 신규 vitest 31건 (전체 162 PASS) — **75% 돌파** 🎉, test-engineer 검증 대기 |
@@ -244,7 +245,8 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 ## Phase 13 진행 중 — 정확성 잔존 + Export + 운영
 
 ✅ 완료: step 034 — KRW Decimal/int 통화 처리 + DB query ORDER BY 표준화 (13-s, 13-t 해소, 885 PASS)
-🔄 다음: step 035 — symbol_performance.csv + universe_history.csv + /export/* 분리 라우팅 + encoding 옵션 (backend-api-engineer)
+✅ 완료: step 035 — symbol_performance.csv + universe_history.csv + /export/* 분리 라우팅 + encoding 옵션 (09-i·j·k·l 해소, 916 PASS)
+🔄 다음: step 036 — API 잔존 (strategies versions + backtests 목록/상세 + 시장 데이터 API + trades pagination)
 
 Phase 13 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 

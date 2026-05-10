@@ -13,6 +13,7 @@ user_id 스코프 (10번 9절): 모든 단일 자원 엔드포인트가 user_id�
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user_id, get_db_session
@@ -321,35 +322,137 @@ def list_cash_events(
     }
 
 
-@router.get("/{run_id}/export/{kind}", summary="CSV/ZIP Export (09번 문서)")
+# ── encoding 유효값 집합 (09-l)
+_VALID_ENCODINGS = {"utf-8-bom", "utf-8", "cp949"}
+
+
+def _parse_encoding(encoding: str) -> str:
+    """encoding query param 검증 후 반환."""
+    if encoding not in _VALID_ENCODINGS:
+        raise InvalidParameterValueError(
+            f"encoding 값이 올바르지 않습니다: {encoding!r}",
+            details=[
+                {
+                    "field": "encoding",
+                    "message": f"허용: {', '.join(sorted(_VALID_ENCODINGS))}",
+                }
+            ],
+        )
+    return encoding
+
+
+# ── 분리 라우팅 (09-k): /export/symbol-performance / universe-history / strategy-snapshot
+# FastAPI 라우터에서 /{kind} 와 /symbol-performance 등 고정 경로가 공존할 때
+# 고정 경로를 먼저 등록해야 우선 매칭된다.
+
+@router.get("/{run_id}/export/symbol-performance", summary="종목별 성과 CSV (09-i)")
+def export_symbol_performance(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+    encoding: str = Query(default="utf-8-bom", description="utf-8-bom | utf-8 | cp949"),
+):
+    """종목별 성과 CSV — trade_groups symbol 기준 집계."""
+    from app.services import csv_exporter
+
+    run = _get_run_or_raise(session, run_id, user_id=user_id)
+    enc = _parse_encoding(encoding)
+    content = csv_exporter.export_symbol_performance_csv(session, run, encoding=enc)
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="symbol_performance.csv"'},
+    )
+
+
+@router.get("/{run_id}/export/universe-history", summary="유니버스 이력 CSV (09-j)")
+def export_universe_history(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+    encoding: str = Query(default="utf-8-bom", description="utf-8-bom | utf-8 | cp949"),
+):
+    """유니버스 이력 CSV — universe_history 행 전개."""
+    from app.services import csv_exporter
+
+    run = _get_run_or_raise(session, run_id, user_id=user_id)
+    enc = _parse_encoding(encoding)
+    content = csv_exporter.export_universe_history_csv(session, run, encoding=enc)
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="universe_history.csv"'},
+    )
+
+
+@router.get("/{run_id}/export/strategy-snapshot", summary="전략 스냅샷 JSON (09-k)")
+def export_strategy_snapshot(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
+    """백테스트 실행 당시 전략 JSON 다운로드."""
+    from app.services import csv_exporter
+
+    run = _get_run_or_raise(session, run_id, user_id=user_id)
+    content = csv_exporter.export_strategy_snapshot_json(run)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="strategy_snapshot.json"'},
+    )
+
+
+@router.get("/{run_id}/export/{kind}", summary="CSV/ZIP Export (09번 문서) — 하위 호환")
 def export(
     run_id: int,
     kind: str,
     session: Session = Depends(get_db_session),
     user_id: int = Depends(get_current_user_id),
+    encoding: str = Query(default="utf-8-bom", description="utf-8-bom | utf-8 | cp949"),
 ):
-    """kind: summary | trades | daily-equity | cash-events | strategy | zip."""
-    from fastapi.responses import Response
+    """kind: summary | trades | daily-equity | cash-events | symbol-performance | universe-history | strategy | strategy-snapshot | zip.
 
+    하위 호환 라우트 — 분리 라우팅(/export/symbol-performance 등)이 우선 매칭되므로
+    이 라우트는 그 외 kind 처리용.
+    """
     from app.services import csv_exporter
 
     run = _get_run_or_raise(session, run_id, user_id=user_id)
+    enc = _parse_encoding(encoding)
 
-    csv_kinds = {
+    # bytes 반환하는 신규 export 함수 래핑 (encoding 파라미터 전달)
+    csv_bytes_kinds = {
+        "symbol-performance": ("symbol_performance.csv", csv_exporter.export_symbol_performance_csv),
+        "universe-history": ("universe_history.csv", csv_exporter.export_universe_history_csv),
+    }
+    # str 반환하는 기존 export 함수 (encoding 미적용 — 기존 호환)
+    csv_str_kinds = {
         "summary": ("summary.csv", csv_exporter.export_summary_csv),
         "trades": ("trades.csv", csv_exporter.export_trades_csv),
         "daily-equity": ("daily_equity.csv", csv_exporter.export_daily_equity_csv),
         "cash-events": ("cash_events.csv", csv_exporter.export_cash_events_csv),
     }
-    if kind in csv_kinds:
-        filename, fn = csv_kinds[kind]
+
+    if kind in csv_bytes_kinds:
+        filename, fn = csv_bytes_kinds[kind]
+        content = fn(session, run, encoding=enc)
+        return Response(
+            content=content,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    if kind in csv_str_kinds:
+        filename, fn = csv_str_kinds[kind]
         content = fn(session, run)
         return Response(
             content=content,
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
-    if kind == "strategy":
+
+    if kind in ("strategy", "strategy-snapshot"):
         content = csv_exporter.export_strategy_snapshot_json(run)
         return Response(
             content=content,
@@ -372,7 +475,10 @@ def export(
         details=[
             {
                 "field": "kind",
-                "message": "허용: summary, trades, daily-equity, cash-events, strategy, zip",
+                "message": (
+                    "허용: summary, trades, daily-equity, cash-events, "
+                    "symbol-performance, universe-history, strategy, strategy-snapshot, zip"
+                ),
             }
         ],
     )

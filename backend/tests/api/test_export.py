@@ -1,4 +1,11 @@
-"""CSV/ZIP Export API 테스트."""
+"""CSV/ZIP Export API 테스트.
+
+신규 (step 035):
+- test_export_symbol_performance_* : 09-i 분리 라우팅 + encoding
+- test_export_universe_history_*   : 09-j 분리 라우팅 + encoding
+- test_export_strategy_snapshot_route : 09-k /export/strategy-snapshot
+- test_export_encoding_*           : 09-l encoding query param
+"""
 
 import io
 import zipfile
@@ -97,9 +104,11 @@ def test_export_zip(client):
 
     zf = zipfile.ZipFile(io.BytesIO(r.content))
     names = set(zf.namelist())
+    # 09-k: 신규 symbol_performance.csv + universe_history.csv 포함 (7개 → 7파일)
     assert {
         "summary.csv", "trades.csv", "daily_equity.csv",
-        "cash_events.csv", "strategy_snapshot.json",
+        "cash_events.csv", "symbol_performance.csv",
+        "universe_history.csv", "strategy_snapshot.json",
     } == names
 
 
@@ -112,3 +121,174 @@ def test_export_invalid_kind(client):
 def test_export_unknown_run(client):
     r = client.get("/api/backtests/9999/export/zip")
     assert r.status_code == 404
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 09-i: /export/symbol-performance 분리 라우팅
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_export_symbol_performance_route_200(client):
+    """분리 라우팅 /export/symbol-performance — 200 + CSV 헤더 확인."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/symbol-performance")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/csv")
+    # UTF-8 BOM 기본값 확인
+    assert r.content[:3] == b"\xef\xbb\xbf"
+    text = r.content.decode("utf-8-sig")
+    # 컬럼 헤더 확인
+    assert "symbol" in text
+    assert "trade_count" in text
+    assert "win_rate" in text
+    assert "total_profit" in text
+    assert "avg_holding_days" in text
+
+
+def test_export_symbol_performance_total_profit_is_int(client):
+    """total_profit 필드가 정수(KRW) — 소수점 없음."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/symbol-performance")
+    text = r.content.decode("utf-8-sig")
+    lines = [l for l in text.splitlines() if l.strip()]
+    if len(lines) > 1:
+        # 헤더에서 total_profit 인덱스
+        headers = lines[0].split(",")
+        tp_idx = headers.index("total_profit")
+        # 데이터 행의 total_profit 값이 정수 형식인지 확인
+        for data_line in lines[1:]:
+            vals = data_line.split(",")
+            tp_val = vals[tp_idx]
+            assert "." not in tp_val, f"total_profit에 소수점 있음: {tp_val!r}"
+
+
+def test_export_symbol_performance_sorted_by_total_profit_desc(client):
+    """total_profit DESC 정렬 확인."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/symbol-performance")
+    text = r.content.decode("utf-8-sig")
+    lines = [l for l in text.splitlines() if l.strip()]
+    if len(lines) <= 2:
+        return  # 종목 1개 이하이면 정렬 검증 불가
+    headers = lines[0].split(",")
+    tp_idx = headers.index("total_profit")
+    profits = [int(line.split(",")[tp_idx]) for line in lines[1:]]
+    assert profits == sorted(profits, reverse=True), "total_profit DESC 정렬 위반"
+
+
+def test_export_symbol_performance_via_kind_route(client):
+    """하위 호환 /{kind} 라우트로도 동일 내용 접근 가능."""
+    run_id = _setup(client)
+    r1 = client.get(f"/api/backtests/{run_id}/export/symbol-performance")
+    r2 = client.get(f"/api/backtests/{run_id}/export/symbol-performance")
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 09-j: /export/universe-history 분리 라우팅
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_export_universe_history_route_200(client):
+    """분리 라우팅 /export/universe-history — 200 + CSV 헤더 확인."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/universe-history")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/csv")
+    assert r.content[:3] == b"\xef\xbb\xbf"
+    text = r.content.decode("utf-8-sig")
+    assert "date" in text
+    assert "symbol" in text
+    assert "market" in text
+    assert "rank" in text
+
+
+def test_export_universe_history_empty_when_no_data(client):
+    """universe_history 행이 없으면 헤더만 있는 CSV 반환."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/universe-history")
+    assert r.status_code == 200
+    text = r.content.decode("utf-8-sig")
+    lines = [l for l in text.splitlines() if l.strip()]
+    # 헤더 1줄만 있어야 함 (데이터 없음)
+    assert len(lines) == 1, f"예상 헤더 1줄, 실제 {len(lines)}줄"
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 09-k: /export/strategy-snapshot 분리 라우팅
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_export_strategy_snapshot_route(client):
+    """/export/strategy-snapshot 분리 라우팅 — JSON 반환."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/strategy-snapshot")
+    assert r.status_code == 200
+    body = r.json()
+    assert "entry" in body
+    assert body["entry"]["conditions"][0]["type"] == "price_vs_ma"
+
+
+def test_export_strategy_snapshot_content_disposition(client):
+    """strategy-snapshot 응답의 Content-Disposition 확인."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/strategy-snapshot")
+    assert "strategy_snapshot.json" in r.headers.get("content-disposition", "")
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 09-l: encoding query param
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_export_encoding_utf8_bom_default(client):
+    """기본값(encoding 미지정)은 UTF-8 BOM — 첫 3바이트 EF BB BF."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/symbol-performance")
+    assert r.content[:3] == b"\xef\xbb\xbf", "UTF-8 BOM 기대값"
+
+
+def test_export_encoding_utf8_no_bom(client):
+    """?encoding=utf-8 — BOM 없는 UTF-8."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/symbol-performance?encoding=utf-8")
+    assert r.status_code == 200
+    # BOM 없음 확인 — 첫 3바이트가 EF BB BF가 아님
+    assert r.content[:3] != b"\xef\xbb\xbf", "BOM이 없어야 함"
+    # 유효한 UTF-8 텍스트 확인
+    text = r.content.decode("utf-8")
+    assert "symbol" in text
+
+
+def test_export_encoding_cp949(client):
+    """?encoding=cp949 — CP949 인코딩, BOM 없음."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/symbol-performance?encoding=cp949")
+    assert r.status_code == 200
+    # BOM 없음 — EF BB BF 아님
+    assert r.content[:3] != b"\xef\xbb\xbf"
+    # CP949 디코딩 가능 확인
+    text = r.content.decode("cp949")
+    assert "symbol" in text
+
+
+def test_export_encoding_invalid(client):
+    """잘못된 encoding 값 → 400 에러 envelope."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/symbol-performance?encoding=latin1")
+    assert r.status_code == 400
+    body = r.json()
+    assert "error" in body
+    assert body["error"]["code"] == "INVALID_PARAMETER_VALUE"
+
+
+def test_export_encoding_universe_history_utf8_bom(client):
+    """universe-history도 encoding 옵션 지원 — UTF-8 BOM 기본값."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/universe-history")
+    assert r.content[:3] == b"\xef\xbb\xbf"
+
+
+def test_export_encoding_universe_history_utf8(client):
+    """universe-history ?encoding=utf-8 — BOM 없음."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/universe-history?encoding=utf-8")
+    assert r.status_code == 200
+    assert r.content[:3] != b"\xef\xbb\xbf"
