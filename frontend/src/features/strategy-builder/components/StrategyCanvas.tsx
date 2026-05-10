@@ -1,9 +1,10 @@
 import { useStrategyDraft } from "../state/StrategyDraftContext";
 import { type Section, SECTIONS, SECTION_LABEL } from "../state/types";
 import ConditionCard from "./ConditionCard";
+import StrategyConfigPanel from "./StrategyConfigPanel";
 
 /**
- * 전략 조립 영역. 4개 섹션 + 자금 관리 placeholder.
+ * 전략 조립 영역. 4 조건 섹션 + 6 비조건 섹션(StrategyConfigPanel).
  */
 export default function StrategyCanvas() {
   const { draft, dispatch } = useStrategyDraft();
@@ -16,7 +17,7 @@ export default function StrategyCanvas() {
         <SectionBlock key={section} section={section} />
       ))}
 
-      <SectionPlaceholder label="자금 관리" />
+      <StrategyConfigPanel />
     </main>
   );
 
@@ -80,19 +81,3 @@ export default function StrategyCanvas() {
   }
 }
 
-function SectionPlaceholder({ label }: { label: string }) {
-  return (
-    <section
-      aria-label={label}
-      style={{
-        marginTop: 16,
-        padding: 12,
-        border: "1px dashed #d1d5db",
-        borderRadius: 6,
-      }}
-    >
-      <h3 style={{ fontSize: 13, fontWeight: 500, color: "#374151" }}>{label}</h3>
-      <p style={{ fontSize: 12, color: "#9ca3af" }}>구현 예정.</p>
-    </section>
-  );
-}

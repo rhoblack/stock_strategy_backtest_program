@@ -91,6 +91,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [029-strategy-schema-gui](./2026-05-10-029-strategy-schema-gui.md) | 12 | frontend-developer | ✅ | **01-h·i + 02-f·g·h·i·j·k 해소 (8 항목) / Phase 12 첫 step**: StrategyDraft 6섹션 + StrategyConfigPanel 6 폼(탭) + serializeDraft 6섹션 + GROUP 1단계 + tax_rate 시계열 GUI + 신규 vitest 34건 (전체 77 PASS) — **02 schema 100% 완료** ✅ — 69% |
 | 2026-05-10 | [phase11-test-engineer-verification](./2026-05-10-phase11-test-engineer-verification.md) | 11 | test-engineer | ✅ | **Phase 11 완료 검증 🟢 ship-go**: 통합 회귀 825 PASS (+209) / 13.x·14.x 9개 정책 모두 통과 / 골든 9지표 유지 / e2e 5건 신규 |
 | 2026-05-10 | [028-jobs-scheduler-and-alerts](./2026-05-10-028-jobs-scheduler-and-alerts.md) | 11 | market-data-engineer | ✅ | **14-j·k 해소 / Phase 11 마지막 step**: 5 jobs(DailyUpdate/HistoricalBackfill/CorporateActionApply/MarketIndex/UniverseSnapshot) + Scheduler busy-set 락 + LockError + MissingDataCheckJob(forward-fill 금지) + 50건 신규 / 820 PASS — **65% (test-engineer 검증 대기)** |
 | 2026-05-10 | [027-market-indices-and-universe-history](./2026-05-10-027-market-indices-and-universe-history.md) | 11 | market-data-engineer | ✅ | **06-i + 07-o·p + 14-i 해소**: market_indices(KOSPI/KOSDAQ/KOSPI200/KOSDAQ150/KRX100) + universe_history(config_json/symbols_json/run_id) + alembic 59cda024ecf8 + 33건 신규 / 770 PASS / **0 fail** (016 head 가드 정리) — 64% |
