@@ -3,6 +3,10 @@ date: YYYY-MM-DD
 agent: <에이전트명 또는 main>
 phase: <Phase 번호>
 status: planned   # planned / in_progress / blocked / completed
+roadmap_step: <예: 017>      # 로드맵.md "Phase 로드맵" 표의 step 번호
+roadmap_impact:              # PM이 step 시작 시 사전 추출. 완료 시 [x] 갱신할 ID 목록
+  - <예: 07-m>
+  - <예: 09-h>
 related_docs:
   - 상세설계/03_condition_registry_engine_design.md
   - 상세설계/13_backtest_accuracy_policy_design.md
@@ -74,6 +78,6 @@ pytest backend/tests/strategy/test_rsi.py
 - [ ] 작업로그/README.md "최근 작업" 표에 1행 추가
 - [ ] Phase 상태가 변경되었으면 Phase 표 갱신
 - [ ] Follow-ups 중 다음 작업 후보로 옮길 항목 정리
-- [ ] **로드맵.md 갱신** — Phase 로드맵의 step ✅ + 문서별 체크리스트의 영향 항목 `[x]` + 진행률 표 손계산 (영향 항목 ID는 step 시작 전 로드맵 "Phase 로드맵" 표에서 확인)
+- [ ] **PM 에이전트 호출 → 로드맵.md 갱신** — "step NNN 마무리" 지시. PM이 Phase 로드맵 step ✅ + 영향 체크박스 [x] + 진행률 표 손계산을 직접 Edit. (영향 체크박스 ID는 step 시작 시 PM이 작업 로그 frontmatter/Plan에 사전 명시했음)
 - [ ] `git commit` (단일 커밋)
 - [ ] **Phase 마지막 step이라면**: `git push origin main` 자동 실행 (의무)

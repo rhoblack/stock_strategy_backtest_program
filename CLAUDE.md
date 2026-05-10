@@ -112,13 +112,14 @@ Phase 7. CSV/ZIP Export
 
 ### 새 작업 시작 시
 
-1. `작업로그/_TEMPLATE.md`를 복사해 새 로그 파일 생성
+1. **PM 에이전트 호출 → 로드맵 사전 기록** — "step NNN 시작" 지시. PM이 `로드맵.md` "Phase 로드맵"에서 영향 체크박스 ID 추출해 새 작업 로그 frontmatter/Plan에 명시 (step 완료 시 어디를 [x] 갱신할지 사전 확정)
+2. `작업로그/_TEMPLATE.md`를 복사해 새 로그 파일 생성
    - 명명 규칙: `YYYY-MM-DD-NNN-짧은-설명.md`
    - 예: `작업로그/2026-05-09-001-rsi-condition.md`
-2. frontmatter (date, agent, phase, status, related_docs) 작성
-3. **Plan 섹션을 체크리스트로 먼저 작성** — 실행 전 무엇을 할지 명확히
-4. status를 `in_progress`로 변경
-5. 실행 시작
+3. frontmatter (date, agent, phase, status, related_docs, **roadmap_impact**) 작성
+4. **Plan 섹션을 체크리스트로 먼저 작성** — 실행 전 무엇을 할지 명확히
+5. status를 `in_progress`로 변경
+6. 실행 시작 (작업 에이전트 호출)
 
 ### 에이전트 호출 시
 
@@ -136,7 +137,7 @@ Phase 7. CSV/ZIP Export
 2. `작업로그/README.md` "최근 작업" 표에 1행 추가
 3. Phase 상태가 변경됐으면 Phase 표 갱신
 4. Follow-ups 중 다음 작업 후보로 승격할 항목을 README의 "Phase N 다음 작업 후보"에 옮김
-5. **`로드맵.md` 갱신** — 본 step이 영향 준 "문서별 기능 체크리스트" 항목을 `[x]`로 표기 + Phase 로드맵의 step ✅ + "진행률 한눈에 보기" 표 손계산. 영향 항목 ID는 본 step 시작 전 `로드맵.md` "Phase 로드맵" 표의 "영향 체크박스" 칼럼에서 미리 확인.
+5. **`로드맵.md` 갱신은 PM 에이전트(`.claude/agents/project-manager.md`)가 담당** — step 완료 시 메인 세션이 PM 에이전트를 호출해 "step NNN 마무리" 지시. PM이 (a) Phase 로드맵의 step ✅, (b) 영향 체크박스 [x], (c) 진행률 표 손계산, (d) 변화 보고를 직접 Edit 도구로 수행. 영향 체크박스 ID는 step 시작 시 PM이 사전 추출해 작업 로그에 기록해 두었음.
 6. **각 step 완료 시**: `git commit` (각 step의 결과물을 단일 커밋)
 7. **Phase 완료 시 (의무)**: `git push origin main` — Phase의 마지막 step commit 직후 실행. push 누락 시 다음 세션이 GitHub에서 동기화 못 하므로 **반드시 자동 실행**.
 
