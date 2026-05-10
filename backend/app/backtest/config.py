@@ -10,6 +10,12 @@ Phase 10 step 022 — 포지션/매수 한도 (04-l + 04-m).
 max_positions / max_daily_entries / daily_buy_budget 필드 추가. 모두
 default=None → 020·021 동작 그대로 → Phase 1 골든 fixture 9지표 frozen 보존.
 한도 적용은 priority 정렬 후 BacktestEngine._apply_position_limits가 담당.
+
+Phase 10 step 023 — 상한가/하한가 차단 정책 (04-o + 13-q).
+allow_buy_limit_up / allow_sell_limit_down / limit_pct 필드 추가. 모두 default
+보수 (False / False / 0.27) — 단일 종목 골든 fixture에는 상한가/하한가
+시나리오가 없어 9지표 frozen 보존. 상장폐지 강제 매도는 BacktestEngine.run의
+delisting_dates 인자로 전달 (per-symbol 매핑이라 dataclass에 두기 부적절).
 """
 
 from __future__ import annotations
@@ -73,6 +79,25 @@ class BacktestConfig:
     max_daily_entries: int | None = None
     daily_buy_budget: float | None = None
 
+    # === 상한가/하한가 차단 (04-o + 정확성 정책 13.4.3 / 13-q) ===
+    # KOSPI/KOSDAQ 가격 제한폭 ±30% 정책 (정확성 정책 13.4.3).
+    # default 보수: 상한가 매수 / 하한가 매도 모두 차단 (skip + event_log).
+    # 단일 종목 골든 fixture에는 상한가/하한가 시나리오 없음 → 9지표 frozen 보존.
+    #
+    # 판정 정책 (13.4.3):
+    #   1. row에 `is_limit_up` / `is_limit_down` 컬럼이 있으면 그 값을 사용
+    #      (PriceLoader가 14번 데이터 파이프라인에서 미리 채울 수 있는 자리).
+    #   2. 컬럼이 없으면 fallback: high == low and pct_change >= limit_pct
+    #      (보수적 임계 — KOSPI/KOSDAQ 한도 30%의 90% 정도인 0.27 default).
+    #
+    # allow_buy_limit_up=True로 두면 상한가에서도 매수 시도 (현실 비현실적이지만
+    # 백테스트 옵션으로 허용). allow_sell_limit_down=True도 마찬가지로 매도 시도.
+    allow_buy_limit_up: bool = False
+    allow_sell_limit_down: bool = False
+    # fallback 판정 임계 (소수). 0.27 = +27% 이상 상승 + high==low (단일 가격) →
+    # 상한가로 간주. 0.295로 올리면 보다 엄격, 0.25로 내리면 보다 보수적.
+    limit_pct: float = 0.27
+
     def __post_init__(self) -> None:
         if self.priority_method not in SUPPORTED_PRIORITY_METHODS:
             raise ValueError(
@@ -134,3 +159,29 @@ class BacktestConfig:
                     f"daily_buy_budget는 양수여야 합니다 (None이면 무제한): "
                     f"{self.daily_buy_budget}"
                 )
+
+        # === 상한가/하한가 (023) ===
+        # bool 검증 — int 0/1을 받지 않도록 명시 (타입 안전 + 결정론).
+        if not isinstance(self.allow_buy_limit_up, bool):
+            raise ValueError(
+                f"allow_buy_limit_up는 bool이어야 합니다: "
+                f"{type(self.allow_buy_limit_up).__name__}"
+            )
+        if not isinstance(self.allow_sell_limit_down, bool):
+            raise ValueError(
+                f"allow_sell_limit_down는 bool이어야 합니다: "
+                f"{type(self.allow_sell_limit_down).__name__}"
+            )
+        # limit_pct는 0~1 범위 양수. 0이면 모든 상승봉을 상한가로 오판하므로 거부.
+        # 1 이상이면 상한가가 영원히 트리거되지 않으므로 의미 없음.
+        if isinstance(self.limit_pct, bool) or not isinstance(
+            self.limit_pct, (int, float)
+        ):
+            raise ValueError(
+                f"limit_pct는 숫자여야 합니다: {type(self.limit_pct).__name__}"
+            )
+        if not (0 < self.limit_pct < 1):
+            raise ValueError(
+                f"limit_pct는 (0, 1) 범위 내여야 합니다 (KOSPI/KOSDAQ 한도 0.30): "
+                f"{self.limit_pct}"
+            )

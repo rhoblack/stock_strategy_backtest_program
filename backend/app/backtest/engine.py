@@ -14,6 +14,14 @@ Phase 10 step 022 — 포지션/매수 한도 (04-l + 04-m). priority 정렬 후
 `_apply_position_limits`가 max_positions / max_daily_entries로 후보를 잘라내고,
 매수 루프에서 daily_buy_budget을 net_amount 누적으로 동적 체크. 모든 한도
 default=None → 020·021 동작 그대로 → Phase 1 골든 fixture 9지표 frozen 보존.
+Phase 10 step 023 — event_log + 상한가/하한가 차단 + 상장폐지 강제 매도
+(04-n + 04-o + 13-p + 13-q). 020·021·022에서 도입된 모든 skip 사유를
+event_log에 표준 사유 코드(self.EVENT_*)로 기록. 추가로 상한가 매수 차단
+(skip_limit_up_buy) / 하한가 매도 차단 (skip_limit_down_sell) / 상장폐지
+강제 매도 (force_sell_delisted)를 처리. 단일 종목 골든 fixture에는 상한가/
+하한가/상장폐지 시나리오 없음 → 9지표 frozen 보존. delisting은 run()의
+`delisting_dates: dict[str, date] | None` 인자로 전달 (per-symbol 매핑이라
+config dataclass에 두기 부적절).
 
 신호일(signal_date) vs 체결일(execution_date) 분리 — 015 정합성 수정:
     next_open 체결 경로(신규 매수, exit_signal 매도)는 신호일과 체결일이
@@ -98,6 +106,21 @@ _EXIT_POSITION_PRIORITY: dict[str, int] = {
     "max_holding_days": 4,  # 종가 청산은 마지막
 }
 
+# === event_log 표준 사유 코드 (04-n + 13-p + 13-q) ===
+# event_type별 reason 화이트리스트. service / DB 영속화 / UI 필터링이 동일한
+# 코드를 공유하도록 모듈 상수로 노출. 새 사유 추가 시 본 상수에 반드시 등록.
+EVENT_TYPE_SKIP = "skip"               # 후보가 한도/정책 위반으로 매수/매도 skip
+EVENT_TYPE_FORCE_SELL = "force_sell"   # 보유 포지션을 정책에 의해 강제 매도
+
+EVENT_REASON_NO_VOLUME = "skip_no_volume"                  # 13.4.4 — 거래정지
+EVENT_REASON_LIMIT_UP_BUY = "skip_limit_up_buy"            # 13.4.3 — 상한가 매수 차단
+EVENT_REASON_LIMIT_DOWN_SELL = "skip_limit_down_sell"      # 13.4.3 — 하한가 매도 차단
+EVENT_REASON_MAX_POSITIONS = "skip_max_positions"          # 04-l
+EVENT_REASON_MAX_DAILY_ENTRIES = "skip_max_daily_entries"  # 04-l
+EVENT_REASON_DAILY_BUY_BUDGET = "skip_daily_buy_budget"    # 04-m
+EVENT_REASON_MAX_GAP = "skip_max_gap"                      # 13.4.1 — 갭 매수 차단
+EVENT_REASON_FORCE_SELL_DELISTED = "force_sell_delisted"   # 13.4.5 — 상장폐지 강제 매도
+
 
 class BacktestEngine:
     """단일/복수 종목 백테스트 엔진.
@@ -122,6 +145,12 @@ class BacktestEngine:
         self.cash_manager = cash_manager
         # cash_events 누적 (서비스가 영속화)
         self.cash_events: list[dict] = []
+        # === event_log 누적 (04-n + 13-p + 13-q, step 023) ===
+        # 표준 사유 코드(EVENT_REASON_*)로 skip/force_sell 이벤트를 시간순 기록.
+        # 각 항목 키: date / symbol / event_type / reason / detail.
+        # 발생 순서 = (date ASC, 내부 처리 순서). 같은 date 내에서는
+        # 보유 평가 → 후보 정렬 → 매수 루프 순서를 따른다 (결정론 — CLAUDE.md #8).
+        self.event_log: list[dict] = []
 
         # === priority="random" 결정론 시드 (13-o, M7 해소) ===
         # Phase 8 이전에는 random_seed가 BacktestRun에 영속화만 되고 사용처가 없는
@@ -139,6 +168,7 @@ class BacktestEngine:
         self,
         prices: dict[str, pd.DataFrame] | pd.DataFrame,
         universe_resolver: Callable[[date_type], list[str]] | None = None,
+        delisting_dates: dict[str, date_type] | None = None,
     ) -> BacktestResult:
         """단일 또는 복수 종목 시세에 대해 백테스트를 실행하고 결과를 반환.
 
@@ -155,11 +185,21 @@ class BacktestEngine:
                 date 컬럼 또는 인덱스가 datetime.
             next_date 컬럼이 없으면 본 메서드가 채운다 (date만 1칸 shift; 가격/조건은
             보지 않음 — look-ahead 차단).
+            상한가/하한가 판정은 row의 `is_limit_up` / `is_limit_down` 컬럼이
+            있으면 그 값을 사용 (PriceLoader-friendly), 없으면 prev_close 기반
+            fallback으로 판정 (config.limit_pct 임계).
         universe_resolver
             `(today: date) -> list[str]` 콜러블. 일별 active universe(매수 후보로
             평가될 종목 집합)를 결정한다. 미지정 시 prices의 모든 종목을 매일 사용.
             보유 포지션 평가는 universe_resolver와 무관하게 항상 portfolio.positions
             전체를 평가한다 (이미 보유한 종목이 universe에서 빠져도 매도 평가는 진행).
+        delisting_dates
+            `{symbol: 폐지일}` 매핑 (정확성 정책 13.4.5 / 04-o). today가
+            폐지일과 일치하면 보유 중이던 그 종목을 당일 종가(adj_close)로
+            강제 매도하고 event_log에 force_sell_delisted 기록. 매수 평가는
+            폐지일 이후로 진행되지 않도록 universe_resolver에서도 제외하는 것이
+            권장이지만, 본 인자가 매수 후보 자체를 차단하지는 않는다 (그 책임은
+            universe_resolver에 있음 — 본 인자는 보유 청산만 담당).
 
         Returns
         -------
@@ -216,6 +256,18 @@ class BacktestEngine:
             if today < self.config.start_date or today > self.config.end_date:
                 continue
 
+            # === 0. 상장폐지 강제 매도 (정확성 정책 13.4.5 / 04-o, step 023) ===
+            # held_at_open 평가 *이전*에 폐지일에 도달한 보유 종목을 당일 종가로
+            # 강제 청산. event_log: force_sell_delisted. 청산 후 동일 today의
+            # exit_position/exit_signal 평가 흐름과 충돌하지 않도록 가장 먼저 처리.
+            if delisting_dates:
+                self._force_sell_delisted_today(
+                    today=today,
+                    delisting_dates=delisting_dates,
+                    rows_by_date=rows_by_date,
+                    result=result,
+                )
+
             # === 1. 보유 포지션 평가 ===
             # 015 흐름과 호환: today 시작 시점에 보유 중이던 종목만 매도 평가.
             # 같은 today에 청산된 종목은 매수 후보로 다시 평가하지 않는다 (단일 종목
@@ -223,7 +275,7 @@ class BacktestEngine:
             # Phase 1 골든 fixture 정합성 유지).
             held_at_open = sorted(self.portfolio.positions.keys())
             for symbol in held_at_open:
-                # 평가 도중 청산되었을 수 있으므로 재확인.
+                # 평가 도중 청산되었을 수 있으므로 재확인 (강제 매도 포함).
                 if symbol not in self.portfolio.positions:
                     continue
 
@@ -239,6 +291,14 @@ class BacktestEngine:
 
                 if self.config.skip_no_volume and row["adj_volume"] == 0:
                     # 거래정지 — 매수/매도 모두 skip (정확성 정책 13.4.4).
+                    # event_log: skip_no_volume (보유 매도 평가 skip).
+                    self._log_event(
+                        date=today,
+                        symbol=symbol,
+                        event_type=EVENT_TYPE_SKIP,
+                        reason=EVENT_REASON_NO_VOLUME,
+                        detail={"phase": "exit_evaluation"},
+                    )
                     continue
 
                 self._evaluate_held_symbol(
@@ -267,6 +327,7 @@ class BacktestEngine:
             # 022 — 한도 적용 (priority 정렬 순서 유지). default 모두 None이면
             # 입력을 그대로 반환 (021 동작 보존).
             entry_candidates = self._apply_position_limits(
+                today=today,
                 candidates=entry_candidates,
                 held_at_open_set=held_at_open_set,
             )
@@ -302,6 +363,8 @@ class BacktestEngine:
         result.final_cash = self.portfolio.cash
         result.final_equity = self.portfolio.total_equity()
         result.trade_executions = list(self.portfolio.trade_logs)
+        # 023 — event_log 영속화 (BacktestResult 노출). DB 저장은 후속 step.
+        result.event_log = list(self.event_log)
         return result
 
     # === 입력 정규화 ===
@@ -379,19 +442,91 @@ class BacktestEngine:
             and not pd.isna(row.get("next_open"))
             and next_date is not None
         ):
-            self._process_sell_at_price(
-                symbol=symbol,
-                price=float(row["next_open"]),
-                quantity=self.portfolio.positions[symbol].quantity,
-                on_date=next_date,
-                reason="exit_signal",
-                result=result,
-                signal_date=today,
-            )
+            # 하한가 매도 차단 (정확성 정책 13.4.3, 023). 신호일 종가가 하한가면
+            # 매도 보류 + event_log. default allow_sell_limit_down=False → 차단.
+            if not self.config.allow_sell_limit_down and self._is_limit_down(row):
+                self._log_event(
+                    date=today,
+                    symbol=symbol,
+                    event_type=EVENT_TYPE_SKIP,
+                    reason=EVENT_REASON_LIMIT_DOWN_SELL,
+                    detail={"signal_close": float(row["adj_close"])},
+                )
+            else:
+                self._process_sell_at_price(
+                    symbol=symbol,
+                    price=float(row["next_open"]),
+                    quantity=self.portfolio.positions[symbol].quantity,
+                    on_date=next_date,
+                    reason="exit_signal",
+                    result=result,
+                    signal_date=today,
+                )
 
         # 4. 평가 종료 후 그날 high를 peak에 반영 (다음날부터 trailing 적용)
         if symbol in self.portfolio.positions:
             self.portfolio.update_peak_price(symbol, float(row["adj_high"]))
+
+    def _force_sell_delisted_today(
+        self,
+        *,
+        today: date_type,
+        delisting_dates: dict[str, date_type],
+        rows_by_date: dict[str, dict[date_type, pd.Series]],
+        result: BacktestResult,
+    ) -> None:
+        """today가 폐지일과 일치하는 보유 종목을 당일 종가로 강제 청산 (13.4.5).
+
+        체결가 = 당일 ``adj_close`` (정리매매 마지막 종가에 준함). 시세가
+        결손이면 마지막 update_market_price된 ``current_price`` (Position 보존)
+        를 사용 — 시세 데이터 없는 폐지일에서도 청산이 누락되지 않도록 보수적
+        fallback. event_log: ``force_sell_delisted``. 동일 today에 보유 평가
+        흐름이 이어지지만 청산된 종목은 이미 portfolio.positions에서 빠지므로
+        이중 처리되지 않는다.
+
+        결정론: 보유 종목 정렬은 ``sorted(...)``로 명시 (CLAUDE.md #8).
+        """
+        # 보유 중이면서 today == 폐지일인 종목만 필터
+        held = sorted(self.portfolio.positions.keys())
+        for symbol in held:
+            delisting_date = delisting_dates.get(symbol)
+            if delisting_date is None:
+                continue
+            if delisting_date != today:
+                continue
+            if symbol not in self.portfolio.positions:
+                continue
+
+            position = self.portfolio.positions[symbol]
+            full_qty = position.quantity
+
+            # 청산가: today row의 adj_close 우선, 없으면 마지막 평가가
+            row_map = rows_by_date.get(symbol)
+            row = row_map.get(today) if row_map is not None else None
+            if row is not None:
+                exit_price = float(row["adj_close"])
+            else:
+                exit_price = float(position.current_price)
+
+            self._log_event(
+                date=today,
+                symbol=symbol,
+                event_type=EVENT_TYPE_FORCE_SELL,
+                reason=EVENT_REASON_FORCE_SELL_DELISTED,
+                detail={
+                    "quantity": full_qty,
+                    "exit_price": exit_price,
+                    "row_present": row is not None,
+                },
+            )
+            self._process_sell_at_price(
+                symbol=symbol,
+                price=exit_price,
+                quantity=full_qty,
+                on_date=today,
+                reason=EVENT_REASON_FORCE_SELL_DELISTED,
+                result=result,
+            )
 
     def _resolve_active_universe(
         self,
@@ -426,6 +561,10 @@ class BacktestEngine:
 
         결정론: active_universe는 sorted된 상태로 들어옴 (_resolve_active_universe
         에서 강제). 본 메서드는 그 순서를 그대로 유지한다.
+
+        023 — 거래정지(volume==0)인 후보는 본 단계에서 제외하고 event_log
+        (skip_no_volume)에 기록. final_entry_signal이 True인 봉만 대상으로 해
+        무관한 종목까지 잡지 않는다.
         """
         candidates: list[tuple[str, pd.Series]] = []
         for symbol in active_universe:
@@ -436,7 +575,20 @@ class BacktestEngine:
             if row is None:
                 continue
             # 거래정지 종목은 매수 후보에서 제외 (정확성 정책 13.4.4).
-            if self.config.skip_no_volume and row["adj_volume"] == 0:
+            # 순서 유지: adj_volume 접근이 final_entry_signal 접근보다 먼저
+            # (필수 컬럼 결손 시 KeyError를 일찍 표출 — 020 호환).
+            no_volume = self.config.skip_no_volume and row["adj_volume"] == 0
+            if no_volume:
+                # final_entry_signal=True인 후보만 event_log에 기록 (skip 의미가
+                # 있는 후보로 한정 — 매일 매 종목 spam 방지).
+                if bool(row["final_entry_signal"]):
+                    self._log_event(
+                        date=today,
+                        symbol=symbol,
+                        event_type=EVENT_TYPE_SKIP,
+                        reason=EVENT_REASON_NO_VOLUME,
+                        detail={"phase": "entry_candidate"},
+                    )
                 continue
             if not bool(row["final_entry_signal"]):
                 continue
@@ -526,6 +678,7 @@ class BacktestEngine:
     def _apply_position_limits(
         self,
         *,
+        today: date_type,
         candidates: list[tuple[str, pd.Series]],
         held_at_open_set: set[str],
     ) -> list[tuple[str, pd.Series]]:
@@ -547,8 +700,11 @@ class BacktestEngine:
         모든 한도가 None이면 입력 candidates를 그대로 반환 → 021 동작 보존
         (Phase 1 골든 fixture 9지표 frozen 호환).
 
-        한도에 의해 skip된 후보는 본 메서드에서 단순 제거. 023에서 event_log
-        도입 시 skip 사유와 함께 기록할 후보가 된다 (인계 — 본 step의 scope 아님).
+        023 — 한도에 의해 잘려나간 후보는 event_log에 sliced 사유로 기록한다.
+        같은 후보가 두 한도에 모두 걸리면 더 강한 (먼저 걸린) 한도 사유 하나만
+        기록 (max_positions가 더 엄격하면 그것을, 그렇지 않으면 max_daily_entries).
+        결정론: 사유 우선순위 — max_positions > max_daily_entries (보유 슬롯이
+        더 근본적인 제약이므로 먼저 평가).
         """
         max_positions = self.config.max_positions
         max_daily_entries = self.config.max_daily_entries
@@ -558,21 +714,54 @@ class BacktestEngine:
             return candidates
 
         # 사전 한도 두 값을 결합해 cutoff 계산. 후보 길이를 가장 작은 값으로 자른다.
-        cutoff = len(candidates)
+        # 어떤 한도가 cutoff를 결정했는지 기록해 event_log 사유 결정에 사용.
+        cutoff_pos = len(candidates)
+        cutoff_daily = len(candidates)
 
         if max_positions is not None:
             # 보유 + 신규 후보 합이 max_positions 초과 시 신규 후보 자름.
             # 신규 매수 가능 슬롯 = max(0, max_positions - 현재 보유 수).
-            # held_at_open_set은 today 시작 시점 보유 종목. 같은 today에 청산된
-            # 종목은 entry candidate 수집 단계에서 이미 held_at_open으로 제외되므로,
-            # "신규 매수 후보 합"은 곧 `len(candidates)`가 후보 측 표현.
             available_slots = max(0, max_positions - len(held_at_open_set))
-            cutoff = min(cutoff, available_slots)
+            cutoff_pos = min(cutoff_pos, available_slots)
 
         if max_daily_entries is not None:
-            cutoff = min(cutoff, max_daily_entries)
+            cutoff_daily = min(cutoff_daily, max_daily_entries)
 
-        return candidates[:cutoff]
+        cutoff = min(cutoff_pos, cutoff_daily)
+        accepted = candidates[:cutoff]
+        sliced = candidates[cutoff:]
+
+        # 잘린 후보들을 event_log에 기록. 우선순위: max_positions가 더 엄격하면
+        # max_positions 사유, 아니면 max_daily_entries 사유. 이렇게 결정해야 같은
+        # 입력에 대해 동일한 사유가 기록되어 결정론 보장 (CLAUDE.md #8).
+        if sliced:
+            # 어떤 한도가 cutoff를 결정했는지: 더 작은 cutoff_*가 결정.
+            # 동률이면 max_positions를 우선 (더 근본적 제약).
+            if max_positions is not None and cutoff_pos <= cutoff_daily:
+                reason = EVENT_REASON_MAX_POSITIONS
+                detail_base = {
+                    "max_positions": max_positions,
+                    "held_count": len(held_at_open_set),
+                    "available_slots": max(
+                        0, max_positions - len(held_at_open_set)
+                    ),
+                }
+            else:
+                reason = EVENT_REASON_MAX_DAILY_ENTRIES
+                detail_base = {
+                    "max_daily_entries": max_daily_entries,
+                    "candidates_count": len(candidates),
+                }
+            for symbol, _row in sliced:
+                self._log_event(
+                    date=today,
+                    symbol=symbol,
+                    event_type=EVENT_TYPE_SKIP,
+                    reason=reason,
+                    detail=detail_base,
+                )
+
+        return accepted
 
     # === 헬퍼 ===
 
@@ -595,14 +784,25 @@ class BacktestEngine:
         next row의 가격(open/close)이나 신호는 절대 보지 않는다 — execution
         시점 결정에만 사용. PriceLoader가 14번 문서에 맞춰 next_date를 미리
         채우는 환경에서는 본 메서드가 no-op로 동작한다.
+
+        본 메서드는 상한가/하한가 fallback 판정용 `prev_close`도 함께 채운다
+        (없으면). prev_close는 전일까지의 종가(`adj_close.shift(1)`)이며 본 row
+        평가에서 미래 데이터가 들어가지 않는다.
         """
-        if "next_date" in df.columns:
-            return df
-        df = df.copy()
-        if "date" in df.columns:
-            df["next_date"] = df["date"].shift(-1)
-        else:
-            df["next_date"] = pd.Series(df.index, index=df.index).shift(-1)
+        added = False
+        if "next_date" not in df.columns:
+            if not added:
+                df = df.copy()
+                added = True
+            if "date" in df.columns:
+                df["next_date"] = df["date"].shift(-1)
+            else:
+                df["next_date"] = pd.Series(df.index, index=df.index).shift(-1)
+        if "prev_close" not in df.columns:
+            if not added:
+                df = df.copy()
+                added = True
+            df["prev_close"] = df["adj_close"].shift(1)
         return df
 
     def _next_date_or_none(self, row: pd.Series):
@@ -622,6 +822,83 @@ class BacktestEngine:
             # datetime.datetime 등
             return value.date()
         return value
+
+    def _log_event(
+        self,
+        *,
+        date: date_type,
+        symbol: str,
+        event_type: str,
+        reason: str,
+        detail: dict | None = None,
+    ) -> None:
+        """event_log에 1건 append (04-n + 13-p + 13-q).
+
+        호출 순서가 그대로 event_log 순서가 된다 — 본 메서드는 정렬하지 않으며,
+        호출자가 (date ASC, 내부 처리 순서)를 지켜 결정론을 보장한다 (CLAUDE.md #8).
+        """
+        self.event_log.append(
+            {
+                "date": date,
+                "symbol": symbol,
+                "event_type": event_type,
+                "reason": reason,
+                "detail": dict(detail) if detail else {},
+            }
+        )
+
+    def _is_limit_up(self, row: pd.Series) -> bool:
+        """row가 상한가인지 판정 (정확성 정책 13.4.3).
+
+        1. row에 ``is_limit_up`` 컬럼이 있고 truthy → True
+        2. 없으면 fallback: ``adj_high == adj_low and pct_change >= limit_pct``
+           - adj_high == adj_low : 일중 가격 변동 없음 (단일가)
+           - pct_change >= limit_pct : 전일 종가 대비 상승률이 임계 이상
+           prev_close가 NaN/0이면 (첫 봉) False (보수적 — look-ahead 안전).
+        """
+        if "is_limit_up" in row.index:
+            value = row["is_limit_up"]
+            if pd.isna(value):
+                return False
+            return bool(value)
+        # fallback
+        if "prev_close" not in row.index:
+            return False
+        prev_close = row["prev_close"]
+        if pd.isna(prev_close) or prev_close == 0:
+            return False
+        adj_high = float(row["adj_high"])
+        adj_low = float(row["adj_low"])
+        adj_close = float(row["adj_close"])
+        if adj_high != adj_low:
+            return False
+        pct_change = (adj_close - float(prev_close)) / float(prev_close)
+        return pct_change >= self.config.limit_pct
+
+    def _is_limit_down(self, row: pd.Series) -> bool:
+        """row가 하한가인지 판정 (정확성 정책 13.4.3).
+
+        1. row에 ``is_limit_down`` 컬럼이 있고 truthy → True
+        2. 없으면 fallback: ``adj_high == adj_low and pct_change <= -limit_pct``
+        """
+        if "is_limit_down" in row.index:
+            value = row["is_limit_down"]
+            if pd.isna(value):
+                return False
+            return bool(value)
+        # fallback
+        if "prev_close" not in row.index:
+            return False
+        prev_close = row["prev_close"]
+        if pd.isna(prev_close) or prev_close == 0:
+            return False
+        adj_high = float(row["adj_high"])
+        adj_low = float(row["adj_low"])
+        adj_close = float(row["adj_close"])
+        if adj_high != adj_low:
+            return False
+        pct_change = (adj_close - float(prev_close)) / float(prev_close)
+        return pct_change <= -self.config.limit_pct
 
     def _get_exit_position_rules(self) -> list[dict]:
         section = self.strategy_engine.strategy.get("exit_position")
@@ -777,14 +1054,45 @@ class BacktestEngine:
         if execution_date is None:
             return 0.0
 
-        # 다음 거래일 거래정지 체크 (정확성 정책 13.4.2)
+        # 다음 거래일 거래정지 체크 (정확성 정책 13.4.2). event_log: skip_no_volume
+        # (next_volume==0 → 다음날 매수 체결 불가).
         next_volume = row.get("next_volume")
         if self.config.skip_no_volume and next_volume is not None and next_volume == 0:
+            self._log_event(
+                date=today,
+                symbol=symbol,
+                event_type=EVENT_TYPE_SKIP,
+                reason=EVENT_REASON_NO_VOLUME,
+                detail={"phase": "next_day_entry"},
+            )
             return 0.0
 
-        # 갭 체크 (정확성 정책 13.4.1)
+        # 갭 체크 (정확성 정책 13.4.1) + event_log
         gap_pct = (next_open - prev_close) / prev_close * 100
         if gap_pct > self.config.max_gap_pct_for_entry:
+            self._log_event(
+                date=today,
+                symbol=symbol,
+                event_type=EVENT_TYPE_SKIP,
+                reason=EVENT_REASON_MAX_GAP,
+                detail={
+                    "gap_pct": gap_pct,
+                    "max_gap_pct_for_entry": self.config.max_gap_pct_for_entry,
+                },
+            )
+            return 0.0
+
+        # 상한가 매수 차단 (정확성 정책 13.4.3, 023).
+        # 신호일 종가가 상한가면 매수 비현실 → skip + event_log.
+        # default allow_buy_limit_up=False → 차단.
+        if not self.config.allow_buy_limit_up and self._is_limit_up(row):
+            self._log_event(
+                date=today,
+                symbol=symbol,
+                event_type=EVENT_TYPE_SKIP,
+                reason=EVENT_REASON_LIMIT_UP_BUY,
+                detail={"signal_close": float(row["adj_close"])},
+            )
             return 0.0
 
         # 사전 fund 확보 (CashManager 옵션) — 강제 매도는 today 즉시 체결.
@@ -828,11 +1136,23 @@ class BacktestEngine:
         # budget을 초과하면 본 후보부터 skip (이후 후보도 누적이 더 커지므로
         # 사실상 이 시점부터 거의 모두 skip 되지만, 작은 후보가 뒤에 남아 있을
         # 가능성이 있어 호출자는 루프를 계속 돌린다 — 결정론은 priority 순서 유지).
+        # event_log: skip_daily_buy_budget (023).
         if (
             self.config.daily_buy_budget is not None
             and cumulative_buy_cost + execution.net_amount
             > self.config.daily_buy_budget
         ):
+            self._log_event(
+                date=today,
+                symbol=symbol,
+                event_type=EVENT_TYPE_SKIP,
+                reason=EVENT_REASON_DAILY_BUY_BUDGET,
+                detail={
+                    "cumulative_buy_cost": cumulative_buy_cost,
+                    "candidate_net_amount": float(execution.net_amount),
+                    "daily_buy_budget": self.config.daily_buy_budget,
+                },
+            )
             return 0.0
 
         self.portfolio.buy(

@@ -27,10 +27,23 @@ class BacktestResult:
     """단일 백테스트 실행 결과 컨테이너.
 
     Phase 1에서는 list로 보관. Phase 2에서 DB 저장 + summary metrics 추가.
+
+    Phase 10 step 023 — event_log 필드 추가 (04-n + 13-p + 13-q).
+    BacktestEngine.event_log를 그대로 옮겨 영속화 가능한 형태로 노출.
+    각 항목은 dict이며 키 명세는 BacktestEngine._log_event 참조:
+        {
+          "date": date_type,                # 발생일 (today)
+          "symbol": str,                    # 대상 종목 코드
+          "event_type": str,                # "skip" | "force_sell"
+          "reason": str,                    # 표준 사유 코드 (engine.py 상수 참조)
+          "detail": dict[str, Any],         # 사유별 추가 정보 (cumulative cost 등)
+        }
+    DB 영속화는 후속 step (event_log DB 모델 + alembic + service 매핑).
     """
 
     daily_equity: list[DailyEquity] = field(default_factory=list)
     trade_executions: list[dict] = field(default_factory=list)
+    event_log: list[dict] = field(default_factory=list)
     final_cash: float = 0.0
     final_equity: float = 0.0
     initial_cash: float = 0.0
