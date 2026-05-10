@@ -1,4 +1,10 @@
-"""Strategy CRUD API 테스트."""
+"""Strategy CRUD API 테스트.
+
+리뷰 011 이후:
+    - exit_signal 또는 exit_position 중 하나가 필수가 됐기 때문에 페이로드를 보강.
+    - 에러 응답은 표준 envelope `{"error": {...}}` 형식 — body["detail"]가 아닌
+      body["error"]를 검증한다 (10번 7절).
+"""
 
 
 def _payload(name="테스트 전략") -> dict:
@@ -10,6 +16,12 @@ def _payload(name="테스트 전략") -> dict:
                 "logic": "AND",
                 "conditions": [
                     {"type": "price_vs_ma", "ma_period": 20, "operator": ">"},
+                ],
+            },
+            "exit_position": {
+                "logic": "OR",
+                "conditions": [
+                    {"type": "stop_loss", "percent": 3.0},
                 ],
             },
         },
@@ -45,7 +57,11 @@ def test_get_and_update(client):
         "entry": {
             "logic": "AND",
             "conditions": [{"type": "price_vs_ma", "ma_period": 5, "operator": ">"}],
-        }
+        },
+        "exit_position": {
+            "logic": "OR",
+            "conditions": [{"type": "stop_loss", "percent": 3.0}],
+        },
     }
     r2 = client.put(
         f"/api/strategies/{sid}",
@@ -76,7 +92,11 @@ def test_get_not_found_returns_404(client):
     r = client.get("/api/strategies/9999")
     assert r.status_code == 404
     body = r.json()
-    assert body["detail"]["code"] == "STRATEGY_NOT_FOUND"
+    # 표준 envelope (10번 7절)
+    assert body["error"]["code"] == "STRATEGY_NOT_FOUND"
+    assert "message" in body["error"]
+    # X-Request-ID 헤더 (10번 8절)
+    assert "x-request-id" in {k.lower() for k in r.headers}
 
 
 def test_duplicate(client):

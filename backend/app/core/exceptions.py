@@ -90,6 +90,18 @@ class BacktestRunNotFoundError(AppError):
     code = "BACKTEST_RUN_NOT_FOUND"
 
 
+class BacktestNotRunningError(AppError):
+    """이미 종료된 실행에 대해 cancel 등 진행 중 전용 동작을 호출한 경우."""
+
+    code = "BACKTEST_NOT_RUNNING"
+
+
+class BacktestAlreadyRunningError(AppError):
+    """동일 strategy/run에 대해 중복 실행 요청."""
+
+    code = "BACKTEST_ALREADY_RUNNING"
+
+
 class InsufficientPriceDataError(AppError):
     code = "INSUFFICIENT_PRICE_DATA"
 

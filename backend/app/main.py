@@ -4,6 +4,7 @@
     uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 설계서 10번 문서 3~6절에 따라 도메인별 라우터를 include.
+10번 7절(에러 envelope) + 8절(X-Request-ID)을 모든 응답에 적용.
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.errors import register_exception_handlers
+from app.api.middleware import RequestIdMiddleware
 from app.api.routes_backtests import router as backtests_router
 from app.api.routes_conditions import router as conditions_router
 from app.api.routes_strategies import router as strategies_router
@@ -22,14 +25,22 @@ app = FastAPI(
     version=__version__,
 )
 
-# 프론트엔드(Vite dev server)에서 호출 가능하게 — 운영 시 도메인 좁힐 것
+# 미들웨어 등록 순서 주의: 나중에 add_middleware 한 것이 outer가 된다.
+# RequestIdMiddleware가 가장 outer여야 모든 응답(예외 포함)이 X-Request-ID를 갖는다.
+# 따라서 CORS를 먼저 등록하고 RequestId를 나중에 등록.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
+    expose_headers=["X-Request-ID"],
 )
+app.add_middleware(RequestIdMiddleware)
+
+# 표준 error envelope 핸들러 (10.7) — AppError / RequestValidationError /
+# StarletteHTTPException / Exception 모두 {"error": {...}}로 변환
+register_exception_handlers(app)
 
 
 @app.get("/health", tags=["meta"])

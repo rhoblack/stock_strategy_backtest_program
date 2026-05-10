@@ -1,6 +1,10 @@
 """Strategy API Pydantic 스키마.
 
 설계서 10번 2절. ORM 모델과 분리하여 API 입출력 형식만 다룸.
+
+`strategy_json` 필드는 Pydantic 기본 검증 외에도 02번 5절 + 03번 4절 정책
+검증을 거친다 (validate_strategy_json). 여기서 raise되는 AppError는
+errors.py의 exception_handler가 표준 envelope으로 변환한다.
 """
 
 from __future__ import annotations
@@ -8,7 +12,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.schemas.strategy_json import validate_strategy_json
 
 
 class StrategyCreate(BaseModel):
@@ -18,6 +24,20 @@ class StrategyCreate(BaseModel):
     tags: list[str] = []
     favorite: bool = False
 
+    @model_validator(mode="after")
+    def _validate_strategy_payload(self) -> StrategyCreate:
+        """02번 5절 + 03번 4절 + 10번 7.1 검증.
+
+        Pydantic은 ValidationError로 감싸지만 우리 핸들러는 AppError를 우선
+        포착하므로, validator 안에서 AppError를 raise해도 envelope이 유지된다.
+
+        FastAPI는 model_validator 내부의 raise를 RequestValidationError로
+        변환하지 않고 원형 예외를 보존한다(pydantic v2 동작) — handler가
+        AppError로 매칭한다.
+        """
+        validate_strategy_json(self.strategy_json)
+        return self
+
 
 class StrategyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -26,6 +46,12 @@ class StrategyUpdate(BaseModel):
     tags: list[str] | None = None
     favorite: bool | None = None
     change_note: str = ""
+
+    @model_validator(mode="after")
+    def _validate_strategy_payload(self) -> StrategyUpdate:
+        if self.strategy_json is not None:
+            validate_strategy_json(self.strategy_json)
+        return self
 
 
 class StrategyOut(BaseModel):

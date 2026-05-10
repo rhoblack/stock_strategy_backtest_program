@@ -36,7 +36,11 @@ def test_update_strategy_json_creates_new_version(db_session, user, sample_strat
     }
 
     updated = strategy_service.update_strategy(
-        db_session, s.id, strategy_json=new_json, change_note="ma_period 5→20"
+        db_session,
+        s.id,
+        user_id=user.id,
+        strategy_json=new_json,
+        change_note="ma_period 5→20",
     )
     assert updated.strategy_json["entry"]["conditions"][0]["ma_period"] == 20
 
@@ -52,7 +56,9 @@ def test_update_metadata_only_does_not_create_new_version(
     s = strategy_service.create_strategy(
         db_session, user_id=user.id, name="A", strategy_json=sample_strategy_json
     )
-    strategy_service.update_strategy(db_session, s.id, name="A2", favorite=True)
+    strategy_service.update_strategy(
+        db_session, s.id, user_id=user.id, name="A2", favorite=True
+    )
 
     versions = strategy_service.list_strategy_versions(db_session, s.id)
     assert len(versions) == 1  # JSON 안 바뀜
@@ -64,7 +70,9 @@ def test_duplicate_strategy(db_session, user, sample_strategy_json):
         tags=["거래량"], favorite=True,
     )
 
-    dup = strategy_service.duplicate_strategy(db_session, s.id, new_name="복사본")
+    dup = strategy_service.duplicate_strategy(
+        db_session, s.id, user_id=user.id, new_name="복사본"
+    )
     assert dup.id != s.id
     assert dup.name == "복사본"
     assert dup.user_id == user.id
@@ -82,7 +90,7 @@ def test_soft_delete(db_session, user, sample_strategy_json):
     s = strategy_service.create_strategy(
         db_session, user_id=user.id, name="A", strategy_json=sample_strategy_json
     )
-    strategy_service.soft_delete_strategy(db_session, s.id)
+    strategy_service.soft_delete_strategy(db_session, s.id, user_id=user.id)
 
     # 기본 list/get은 안 보임
     assert strategy_service.list_strategies(db_session, user_id=user.id) == []
@@ -104,7 +112,9 @@ def test_list_strategies_orders_by_updated_at_desc(db_session, user, sample_stra
     )
 
     # B 수정 → updated_at 갱신
-    strategy_service.update_strategy(db_session, s1.id, name="A1")
+    strategy_service.update_strategy(
+        db_session, s1.id, user_id=user.id, name="A1"
+    )
 
     listed = strategy_service.list_strategies(db_session, user_id=user.id)
     # s1이 최근 수정 → 첫번째
@@ -122,8 +132,14 @@ def test_list_strategy_versions_orders_ascending(db_session, user, sample_strate
         db_session, user_id=user.id, name="A", strategy_json=sample_strategy_json
     )
     new_json = dict(sample_strategy_json)
-    new_json["filters"] = {"logic": "AND", "conditions": []}
-    strategy_service.update_strategy(db_session, s.id, strategy_json=new_json)
+    # filters는 비어있으면 검증에 걸리므로 유효한 조건 추가
+    new_json["filters"] = {
+        "logic": "AND",
+        "conditions": [{"type": "volume_ratio", "period": 20, "operator": ">=", "value": 2.0}],
+    }
+    strategy_service.update_strategy(
+        db_session, s.id, user_id=user.id, strategy_json=new_json
+    )
 
     versions = strategy_service.list_strategy_versions(db_session, s.id)
     assert [v.version for v in versions] == [1, 2]

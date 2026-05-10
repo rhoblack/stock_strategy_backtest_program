@@ -2,15 +2,25 @@
 
 dev 모드는 단순 BackgroundTasks로 비동기 실행 (시연/소형용).
 운영 시 Celery/RQ/arq 등 작업 큐로 교체.
+
+user_id 스코프 (10번 9절): 모든 단일 자원 엔드포인트가 user_id를 받고
+서비스 레이어에서 BacktestRun.user_id == user_id를 강제한다. 미소유
+시 BACKTEST_RUN_NOT_FOUND.
+
+에러는 AppError raise → errors.py handler가 표준 envelope으로 변환.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user_id, get_db_session
-from app.core.exceptions import BacktestRunNotFoundError, StrategyNotFoundError
+from app.core.exceptions import (
+    BacktestNotRunningError,
+    BacktestRunNotFoundError,
+    InvalidParameterValueError,
+)
 from app.db.session import make_session_factory
 from app.main_state import get_engine
 from app.models.backtest import BacktestRun, BacktestStatus
@@ -45,39 +55,47 @@ def create_backtest(
     session: Session = Depends(get_db_session),
     user_id: int = Depends(get_current_user_id),
 ):
-    try:
-        run = backtest_service.create_backtest_run(
-            session,
-            user_id=user_id,
-            strategy_id=payload.strategy_id,
-            run_name=payload.run_name,
-            universe_config=payload.universe_config,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
-            initial_cash=payload.initial_cash,
-            fee_rate=payload.fee_rate,
-            tax_rate=payload.tax_rate,
-            slippage=payload.slippage,
-            execution_price_type=payload.execution_price_type,
-            use_adjusted_price=payload.use_adjusted_price,
-            tick_rounding=payload.tick_rounding,
-            priority_method=payload.priority_method,
-            priority_tie_breaker=payload.priority_tie_breaker,
-            random_seed=payload.random_seed,
-        )
-    except StrategyNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=exc.to_dict()["error"]) from exc
+    run = backtest_service.create_backtest_run(
+        session,
+        user_id=user_id,
+        strategy_id=payload.strategy_id,
+        run_name=payload.run_name,
+        universe_config=payload.universe_config,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        initial_cash=payload.initial_cash,
+        fee_rate=payload.fee_rate,
+        tax_rate=payload.tax_rate,
+        slippage=payload.slippage,
+        execution_price_type=payload.execution_price_type,
+        use_adjusted_price=payload.use_adjusted_price,
+        tick_rounding=payload.tick_rounding,
+        priority_method=payload.priority_method,
+        priority_tie_breaker=payload.priority_tie_breaker,
+        random_seed=payload.random_seed,
+    )
 
     background.add_task(_run_in_background, run.id)
     return run
 
 
-@router.get("/{run_id}/status", response_model=BacktestRunOut, summary="실행 상태")
-def get_status(run_id: int, session: Session = Depends(get_db_session)):
+def _get_run_or_raise(
+    session: Session, run_id: int, *, user_id: int
+) -> BacktestRun:
+    """user_id 스코프 강제 — 미소유 또는 미존재 모두 NOT_FOUND."""
     run = session.get(BacktestRun, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail={"code": "BACKTEST_RUN_NOT_FOUND"})
+    if run is None or run.user_id != user_id:
+        raise BacktestRunNotFoundError(f"BacktestRun id={run_id} 없음")
     return run
+
+
+@router.get("/{run_id}/status", response_model=BacktestRunOut, summary="실행 상태")
+def get_status(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
+    return _get_run_or_raise(session, run_id, user_id=user_id)
 
 
 @router.get(
@@ -85,15 +103,21 @@ def get_status(run_id: int, session: Session = Depends(get_db_session)):
     response_model=BacktestSummaryOut,
     summary="요약 결과",
 )
-def get_summary(run_id: int, session: Session = Depends(get_db_session)):
-    try:
-        return backtest_service.get_backtest_summary(session, run_id)
-    except BacktestRunNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=exc.to_dict()["error"]) from exc
+def get_summary(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
+    return backtest_service.get_backtest_summary(session, run_id, user_id=user_id)
 
 
 @router.get("/{run_id}/trades", summary="거래 내역 (trade_groups)")
-def list_trades(run_id: int, session: Session = Depends(get_db_session)):
+def list_trades(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
+    _get_run_or_raise(session, run_id, user_id=user_id)
     rows = (
         session.query(TradeGroup)
         .filter_by(run_id=run_id)
@@ -137,15 +161,17 @@ def list_trades(run_id: int, session: Session = Depends(get_db_session)):
 
 
 @router.get("/{run_id}/chart-data", summary="차트 데이터 (candles + markers + equity)")
-def get_chart_data(run_id: int, session: Session = Depends(get_db_session)):
+def get_chart_data(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
     """단일 종목 백테스트 결과 차트 데이터 (08번 16절).
 
     dev 모드: synthetic_seed/synthetic_n으로 candles 재생성.
     Phase 14 PriceLoader 도입 시 daily_prices에서 직접 조회로 교체.
     """
-    run = session.get(BacktestRun, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail={"code": "BACKTEST_RUN_NOT_FOUND"})
+    run = _get_run_or_raise(session, run_id, user_id=user_id)
 
     cfg = run.universe_config_json or {}
     seed = int(cfg.get("synthetic_seed", 42))
@@ -201,7 +227,12 @@ def get_chart_data(run_id: int, session: Session = Depends(get_db_session)):
 
 
 @router.get("/{run_id}/daily-equity", summary="일별 자산")
-def list_daily_equity(run_id: int, session: Session = Depends(get_db_session)):
+def list_daily_equity(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
+    _get_run_or_raise(session, run_id, user_id=user_id)
     rows = (
         session.query(DailyEquity)
         .filter_by(run_id=run_id)
@@ -225,7 +256,12 @@ def list_daily_equity(run_id: int, session: Session = Depends(get_db_session)):
 
 
 @router.get("/{run_id}/cash-events", summary="예수금 이벤트")
-def list_cash_events(run_id: int, session: Session = Depends(get_db_session)):
+def list_cash_events(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
+    _get_run_or_raise(session, run_id, user_id=user_id)
     rows = (
         session.query(CashEvent)
         .filter_by(run_id=run_id)
@@ -253,15 +289,18 @@ def list_cash_events(run_id: int, session: Session = Depends(get_db_session)):
 
 
 @router.get("/{run_id}/export/{kind}", summary="CSV/ZIP Export (09번 문서)")
-def export(run_id: int, kind: str, session: Session = Depends(get_db_session)):
+def export(
+    run_id: int,
+    kind: str,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
     """kind: summary | trades | daily-equity | cash-events | strategy | zip."""
     from fastapi.responses import Response
 
     from app.services import csv_exporter
 
-    run = session.get(BacktestRun, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail={"code": "BACKTEST_RUN_NOT_FOUND"})
+    run = _get_run_or_raise(session, run_id, user_id=user_id)
 
     csv_kinds = {
         "summary": ("summary.csv", csv_exporter.export_summary_csv),
@@ -295,20 +334,29 @@ def export(run_id: int, kind: str, session: Session = Depends(get_db_session)):
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    raise HTTPException(
-        status_code=400, detail={"code": "EXPORT_KIND_INVALID", "kind": kind}
+    raise InvalidParameterValueError(
+        f"export kind이 올바르지 않습니다: {kind!r}",
+        details=[
+            {
+                "field": "kind",
+                "message": "허용: summary, trades, daily-equity, cash-events, strategy, zip",
+            }
+        ],
     )
 
 
 @router.post("/{run_id}/cancel", response_model=BacktestRunOut, summary="실행 취소")
-def cancel(run_id: int, session: Session = Depends(get_db_session)):
-    run = session.get(BacktestRun, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail={"code": "BACKTEST_RUN_NOT_FOUND"})
+def cancel(
+    run_id: int,
+    session: Session = Depends(get_db_session),
+    user_id: int = Depends(get_current_user_id),
+):
+    run = _get_run_or_raise(session, run_id, user_id=user_id)
     if run.status not in (BacktestStatus.PENDING, BacktestStatus.RUNNING):
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "BACKTEST_NOT_RUNNING", "status": run.status.value},
+        # handler가 BACKTEST_NOT_RUNNING(409)으로 변환
+        raise BacktestNotRunningError(
+            f"이미 종료된 실행입니다 (status={run.status.value}).",
+            details=[{"field": "status", "message": run.status.value}],
         )
     run.status = BacktestStatus.CANCELLED
     session.commit()

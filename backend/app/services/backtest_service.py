@@ -62,8 +62,17 @@ def create_backtest_run(
     priority_tie_breaker: str = "symbol_asc",
     random_seed: int | None = None,
 ) -> BacktestRun:
-    """전략 스냅샷 + 정확성 정책 스냅샷을 함께 저장."""
-    strategy = get_strategy(session, strategy_id)
+    """전략 스냅샷 + 정확성 정책 스냅샷을 함께 저장.
+
+    user_id 스코프 강제 (10번 9절): 호출자 user_id가 strategy의 소유자가
+    아니면 get_strategy가 STRATEGY_NOT_FOUND를 raise한다.
+    """
+    # validator 호출 (백테스트 큐 진입 전 마지막 안전망 — strategy create 시점에
+    # 통과했더라도 정책 추가 후 기존 전략에 잘못된 형태가 남아있을 수 있어 재검증)
+    from app.schemas.strategy_json import validate_strategy_json
+
+    strategy = get_strategy(session, strategy_id, user_id=user_id)
+    validate_strategy_json(strategy.strategy_json)
 
     run = BacktestRun(
         user_id=user_id,
@@ -172,9 +181,14 @@ def run_backtest(
         raise
 
 
-def get_backtest_summary(session: Session, run_id: int) -> dict:
-    """run + result + 거래 카운트 등 요약 dict."""
-    run = _get_run(session, run_id)
+def get_backtest_summary(
+    session: Session, run_id: int, *, user_id: int | None = None
+) -> dict:
+    """run + result + 거래 카운트 등 요약 dict.
+
+    user_id가 주어지면 본인 run만 — 미소유 시 BACKTEST_RUN_NOT_FOUND.
+    """
+    run = _get_run(session, run_id, user_id=user_id)
     result = run.result
     return {
         "run_id": run.id,
@@ -190,9 +204,18 @@ def get_backtest_summary(session: Session, run_id: int) -> dict:
 # === 내부 ===
 
 
-def _get_run(session: Session, run_id: int) -> BacktestRun:
+def _get_run(
+    session: Session, run_id: int, *, user_id: int | None = None
+) -> BacktestRun:
+    """단일 BacktestRun 조회.
+
+    user_id가 주어지면 본인 run만 — 미일치 시 NOT_FOUND (정보 누설 방지).
+    user_id=None은 백그라운드 실행 등 신뢰 가능한 컨텍스트에서만 사용.
+    """
     run = session.get(BacktestRun, run_id)
     if run is None:
+        raise BacktestRunNotFoundError(f"BacktestRun id={run_id} 없음")
+    if user_id is not None and run.user_id != user_id:
         raise BacktestRunNotFoundError(f"BacktestRun id={run_id} 없음")
     return run
 
