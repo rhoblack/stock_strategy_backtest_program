@@ -95,12 +95,18 @@ Phase 7. CSV/ZIP Export
 
 ### 새 세션 시작 시
 
-**가장 먼저 `작업로그/README.md`를 읽으세요.** 다음 정보를 확인:
-- 현재 Phase 상태 표
-- 최근 작업 표 (최신 5~10개)
-- 진행 중인 작업 (status: in_progress)
-- 블록된 작업 (status: blocked, 이유 함께 확인)
-- Phase 1 다음 작업 후보 (Phase 1 진행 중일 때)
+**가장 먼저 두 문서를 함께 읽으세요**:
+
+1. `작업로그/README.md` — step 단위 진행 상황
+   - 현재 Phase 상태 표
+   - 최근 작업 표 (최신 5~10개)
+   - 진행 중인 작업 (status: in_progress)
+   - 블록된 작업 (status: blocked, 이유 함께 확인)
+
+2. `로드맵.md` — 상세설계 14문서 대비 진행률 + Phase별 작업 계획
+   - 진행률 한눈에 보기 (카테고리별 + 종합)
+   - Phase 로드맵 (다음 진행할 step 목록 + 영향 체크박스)
+   - 문서별 기능 체크리스트 (현재 ✅ / 미구현 ⬜)
 
 이미 진행 중인 작업이 있으면 그 로그 파일을 먼저 읽어 이어서 진행합니다.
 
@@ -130,8 +136,9 @@ Phase 7. CSV/ZIP Export
 2. `작업로그/README.md` "최근 작업" 표에 1행 추가
 3. Phase 상태가 변경됐으면 Phase 표 갱신
 4. Follow-ups 중 다음 작업 후보로 승격할 항목을 README의 "Phase N 다음 작업 후보"에 옮김
-5. **각 step 완료 시**: `git commit` (각 step의 결과물을 단일 커밋)
-6. **Phase 완료 시 (의무)**: `git push origin main` — Phase의 마지막 step commit 직후 실행. push 누락 시 다음 세션이 GitHub에서 동기화 못 하므로 **반드시 자동 실행**.
+5. **`로드맵.md` 갱신** — 본 step이 영향 준 "문서별 기능 체크리스트" 항목을 `[x]`로 표기 + Phase 로드맵의 step ✅ + "진행률 한눈에 보기" 표 손계산. 영향 항목 ID는 본 step 시작 전 `로드맵.md` "Phase 로드맵" 표의 "영향 체크박스" 칼럼에서 미리 확인.
+6. **각 step 완료 시**: `git commit` (각 step의 결과물을 단일 커밋)
+7. **Phase 완료 시 (의무)**: `git push origin main` — Phase의 마지막 step commit 직후 실행. push 누락 시 다음 세션이 GitHub에서 동기화 못 하므로 **반드시 자동 실행**.
 
 ### 블록 / 중단 시
 

@@ -72,13 +72,8 @@
 
 **환경 셋업 완료**: `backend/.venv/` 활성화 후 `./.venv/Scripts/python.exe -m pytest` 로 검증 가능. **418/418 통과** (baseline 300 → 010-010 +35 → 010-011 +55 → 010-012 +7 → 010-013 +15 → 010-014 +6) + ruff All checks passed. Node v24 + npm 11 사용 가능.
 
-**다음 작업 권고 순서** (Wave A·B·C 이후 — Phase 8 완료, Phase 9 후보):
-1. ⏭ **다음**: 체결일 정합성 버그 수정 — `engine.py` execution_date 분리 (외부 4.13, holding_days/CSV 1일 시프트 해소)
-2. 시장데이터 모델 + LocalCsvProvider 스켈레톤 (외부 CR-002) — market-data-engineer
-3. BacktestEngine 복수 종목/priority 리팩터링 (2번 후, 외부 CR-003)
-4. chart-data를 daily_prices 기반으로 전환 (외부 4.8 / H2)
-5. 프론트엔드 02번 schema 정합화 (H6 — position_sizing/cash_management/risk_management/execution/priority/metadata GUI)
-6. 설계서 갱신: 04 §7(ExecutionModel float→ExecutionResult), 05 §7.3·§9(CashManager DI 흐름), 07 §10(cash_events 비용 분해 6컬럼), 13 §6 영속화 보장 문구
+**다음 작업 권고 순서**: 단일 출처는 [`로드맵.md`](../로드맵.md)의 "Phase 로드맵" 섹션.
+현재 진행 중: Phase 9 (015·016 완료, 다음은 step 017 — signal_date 영속화). Phase 9~13 전체 step 목록과 각 step이 영향 줄 체크박스는 로드맵 참조.
 
 UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아엎어야 함).
 
@@ -209,16 +204,17 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 4. ✅ ExecutionResult dataclass + cash_manager의 ExecutionModel 주입 (C2 + H1 + M2 + M4) — 2026-05-10-013 (backtest-engine-developer)
 5. ✅ TradeExecution.fee/tax + DailyEquity.daily/cumulative + cash_events 분해 영속화 + alembic 마이그레이션 (M5 + 외부 4.7) — 2026-05-10-014 (backend-api-engineer)
 
-## Phase 9 다음 작업 후보 (시장데이터 / 복수종목 / 정확성 정책 잔존)
+## Phase 9 진행 중 (시장데이터 1단계 + 정확성 잔존)
 
-설계서 14·06·04번 + 외부 리뷰 010 잔존 항목 기준.
+### 완료
+- ✅ 015 체결일 정합성 (signal_date vs execution_date)
+- ✅ 016 시장데이터 3종 모델 + repositories 스켈레톤
 
-1. ⏭ **다음**: 체결일 정합성 버그 수정 — `engine.py` execution_date 분리 (외부 4.13)
-2. 시장데이터 모델 + LocalCsvProvider 스켈레톤 (외부 CR-002) — market-data-engineer
-3. BacktestEngine 복수 종목/priority 리팩터링 (2번 후, 외부 CR-003)
-4. chart-data를 daily_prices 기반으로 전환 (외부 4.8 / H2)
-5. 프론트엔드 02번 schema 정합화 (H6)
-6. 설계서 갱신: 04 §7, 05 §7.3·§9, 07 §10, 13 §6 (Wave C에서 발견된 코드↔문서 갭)
+### 다음 작업 후보 + Phase 10~13 계획
+**단일 출처**: [`로드맵.md`](../로드맵.md) "Phase 로드맵" 섹션.
+- ⏭ 다음: step 017 — signal_date 영속화 (TradeExecution 컬럼 + alembic + service 매핑)
+- step 018·019: LocalCsvProvider + PriceLoader + UniverseSelector
+- Phase 10·11·12·13 전체 계획은 로드맵 참조
 
 각 단계는 별도 작업 로그 파일을 만들어 진행합니다.
 
