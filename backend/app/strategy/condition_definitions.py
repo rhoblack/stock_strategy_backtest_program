@@ -17,6 +17,7 @@ from __future__ import annotations
 from app.strategy.conditions import exit_position as _exit_position
 from app.strategy.conditions import moving_average as _moving_average
 from app.strategy.conditions import rsi as _rsi
+from app.strategy.conditions import trading_value as _trading_value
 from app.strategy.conditions import volume as _volume
 from app.strategy.registry import condition_registry
 
@@ -26,6 +27,8 @@ ALL_DEFINITIONS: dict[str, dict] = {
     _moving_average.MA_CROSS_META["type"]: _moving_average.MA_CROSS_META,
     _volume.VOLUME_RATIO_META["type"]: _volume.VOLUME_RATIO_META,
     _rsi.RSI_LEVEL_META["type"]: _rsi.RSI_LEVEL_META,
+    _trading_value.AVG_TRADING_VALUE_META["type"]: _trading_value.AVG_TRADING_VALUE_META,
+    _trading_value.MARKET_INDEX_FILTER_META["type"]: _trading_value.MARKET_INDEX_FILTER_META,
     _exit_position.TAKE_PROFIT_META["type"]: _exit_position.TAKE_PROFIT_META,
     _exit_position.STOP_LOSS_META["type"]: _exit_position.STOP_LOSS_META,
     _exit_position.MAX_HOLDING_DAYS_META["type"]: _exit_position.MAX_HOLDING_DAYS_META,
