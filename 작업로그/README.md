@@ -89,6 +89,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-10 | [022-position-limits](./2026-05-10-022-position-limits.md) | 10 | backtest-engine-developer | ✅ | **04-l + 04-m 해소**: _apply_position_limits + max_positions/max_daily_entries(사전) + daily_buy_budget(매수 루프 cumulative 동적) + 22건 신규 / 587 PASS / 골든 frozen — 56% |
 | 2026-05-10 | [021-priority-and-random-seed](./2026-05-10-021-priority-and-random-seed.md) | 10 | backtest-engine-developer | ✅ | **04-k + 13-n + 13-o 해소 (M7 잔존 해소)**: priority 4종(none/trading_value_desc/market_cap_desc/random) + symbol_asc tie-breaker + random_seed 실사용 + None+random ValueError + 14건 신규 / 565 PASS / 골든 frozen — 55% |
 | 2026-05-10 | [020-backtest-engine-multi-symbol](./2026-05-10-020-backtest-engine-multi-symbol.md) | 10 | backtest-engine-developer | ✅ | **04-i·j 해소 / Phase 10 첫 step**: BacktestEngine dict[symbol, df] 입력 + 단일 df 자동 wrap 호환 + held_at_open_set 가드(015 의미 보존) + 15건 신규 / 551 PASS / 골든 9지표 frozen 유지 — 53% |
 | 2026-05-10 | [phase9-test-engineer-verification](./2026-05-10-phase9-test-engineer-verification.md) | 9 | test-engineer | ✅ | **Phase 9 완료 검증 🟢 ship-go**: 통합 회귀 536 PASS / 13.17 acceptance 모두 통과 / 골든 9지표 유지 / e2e 시나리오 5건 신규 |

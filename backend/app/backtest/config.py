@@ -5,6 +5,11 @@ Phase 1 단일 종목 한정. universe / priority / cash_management는 후속 �
 Phase 10 step 021 — priority 알고리즘 + random_seed 실사용 (04-k / 13-n / 13-o).
 priority_method / priority_tie_breaker / random_seed 필드 추가. 기존 호출자는
 default 값 ("none" / "symbol_asc" / None)이 020 동작과 동일해 영향 없음.
+
+Phase 10 step 022 — 포지션/매수 한도 (04-l + 04-m).
+max_positions / max_daily_entries / daily_buy_budget 필드 추가. 모두
+default=None → 020·021 동작 그대로 → Phase 1 골든 fixture 9지표 frozen 보존.
+한도 적용은 priority 정렬 후 BacktestEngine._apply_position_limits가 담당.
 """
 
 from __future__ import annotations
@@ -54,6 +59,20 @@ class BacktestConfig:
     # priority_method="random"이면 None 금지 — __post_init__에서 ValueError.
     random_seed: int | None = None
 
+    # === 포지션/매수 한도 (04-l + 04-m, 정확성 정책 13.8) ===
+    # 모두 default=None → 020·021 동작과 동일 (한도 미적용).
+    # priority가 정한 순서를 그대로 따라 한도 적용 — 결정론 (CLAUDE.md #8).
+    #
+    # max_positions: 동시 보유 종목 수 상한 (현재 보유 + 신규 매수 후보 합 기준).
+    #   예) 보유=2 + max_positions=3 → 신규 매수는 1개까지만.
+    # max_daily_entries: 하루 신규 매수 종목 수 상한 (보유와 무관, 후보 리스트 자체 자름).
+    #   예) max_daily_entries=1 + 후보=3 → priority 1순위 후보만 매수 시도.
+    # daily_buy_budget: 하루 매수 가능 총 금액 상한 (실 체결 cost 누적 — net_amount 기준).
+    #   매수 루프 진행 중 cumulative + 새 비용 > budget이면 그 후보부터 skip.
+    max_positions: int | None = None
+    max_daily_entries: int | None = None
+    daily_buy_budget: float | None = None
+
     def __post_init__(self) -> None:
         if self.priority_method not in SUPPORTED_PRIORITY_METHODS:
             raise ValueError(
@@ -73,3 +92,45 @@ class BacktestConfig:
                 "priority_method='random'은 random_seed가 필요합니다 "
                 "(정확성 정책 13.12.2). int 시드를 명시하세요."
             )
+
+        # === 한도 검증 (04-l + 04-m) ===
+        # None은 "한도 미적용". 명시적으로 0/음수를 받으면 매수 자체가 불가하거나
+        # 의미가 모호하므로 ValueError로 거부 (정책 명시 → "보이지 않는 차단" 방지).
+        if self.max_positions is not None:
+            if not isinstance(self.max_positions, int) or isinstance(
+                self.max_positions, bool
+            ):
+                raise ValueError(
+                    f"max_positions는 int여야 합니다: {type(self.max_positions).__name__}"
+                )
+            if self.max_positions <= 0:
+                raise ValueError(
+                    f"max_positions는 양수여야 합니다 (None이면 무제한): "
+                    f"{self.max_positions}"
+                )
+        if self.max_daily_entries is not None:
+            if not isinstance(self.max_daily_entries, int) or isinstance(
+                self.max_daily_entries, bool
+            ):
+                raise ValueError(
+                    f"max_daily_entries는 int여야 합니다: "
+                    f"{type(self.max_daily_entries).__name__}"
+                )
+            if self.max_daily_entries <= 0:
+                raise ValueError(
+                    f"max_daily_entries는 양수여야 합니다 (None이면 무제한): "
+                    f"{self.max_daily_entries}"
+                )
+        if self.daily_buy_budget is not None:
+            if isinstance(self.daily_buy_budget, bool) or not isinstance(
+                self.daily_buy_budget, (int, float)
+            ):
+                raise ValueError(
+                    f"daily_buy_budget는 숫자여야 합니다: "
+                    f"{type(self.daily_buy_budget).__name__}"
+                )
+            if self.daily_buy_budget <= 0:
+                raise ValueError(
+                    f"daily_buy_budget는 양수여야 합니다 (None이면 무제한): "
+                    f"{self.daily_buy_budget}"
+                )

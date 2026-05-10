@@ -10,6 +10,10 @@ Phase 10 step 021 — priority 알고리즘 + symbol_asc tie-breaker + random_se
 실사용 (04-k / 13-n / 13-o / M7 잔존 해소). config.priority_method로 후보 정렬을
 선택하고, "random" method는 config.random_seed로 결정론 보장. default
 priority_method="none"이면 020과 동작 동일 (Phase 1 골든 fixture 호환).
+Phase 10 step 022 — 포지션/매수 한도 (04-l + 04-m). priority 정렬 후
+`_apply_position_limits`가 max_positions / max_daily_entries로 후보를 잘라내고,
+매수 루프에서 daily_buy_budget을 net_amount 누적으로 동적 체크. 모든 한도
+default=None → 020·021 동작 그대로 → Phase 1 골든 fixture 9지표 frozen 보존.
 
 신호일(signal_date) vs 체결일(execution_date) 분리 — 015 정합성 수정:
     next_open 체결 경로(신규 매수, exit_signal 매도)는 신호일과 체결일이
@@ -52,9 +56,13 @@ priority_method="none"이면 020과 동작 동일 (Phase 1 골든 fixture 호환
             - "trading_value_desc"    → today close × volume 내림차순 + symbol ASC
             - "market_cap_desc"       → today market_cap 내림차순 + symbol ASC
             - "random" + random_seed  → rng.random() 키 + symbol ASC tie-breaker
+        - 한도 적용 (step 022, _apply_position_limits — 정렬 순서 유지하며 잘라냄):
+            - max_positions: 현재 보유 + 신규 후보 합이 상한 초과 시 후보 잘라냄
+            - max_daily_entries: 후보 리스트 자체를 N개로 잘라냄 (보유와 무관)
 
-    3. 매수 처리 (정렬된 후보 순회 — max_positions 미적용, step 022 영역):
-        - 후보별로 _maybe_buy 호출
+    3. 매수 처리 (정렬된 후보 순회):
+        - 후보별로 _maybe_buy 호출 (daily_buy_budget 누적 cost를 전달)
+        - daily_buy_budget: 매수 루프 진행 중 cumulative + 새 net_amount > budget이면 skip
         - cash 부족 시 그 후보부터 skip (CashManager가 enabled면 사전 확보 시도)
 
     4. 일별 자산 기록 (Portfolio 전체 기준)
@@ -256,6 +264,15 @@ class BacktestEngine:
             # default priority_method="none"이면 입력 순서(symbol ASC) 그대로 반환.
             entry_candidates = self._apply_priority(entry_candidates)
             held_at_open_set = set(held_at_open)
+            # 022 — 한도 적용 (priority 정렬 순서 유지). default 모두 None이면
+            # 입력을 그대로 반환 (021 동작 보존).
+            entry_candidates = self._apply_position_limits(
+                candidates=entry_candidates,
+                held_at_open_set=held_at_open_set,
+            )
+            # 022 — daily_buy_budget 누적 추적 (실 체결 net_amount 합).
+            # _maybe_buy는 매수 성공 시 그 비용을 반환, 실패/skip 시 0.0 반환.
+            cumulative_buy_cost = 0.0
             for symbol, row in entry_candidates:
                 # today 시작 시점에 보유 중이던 종목은 (같은 today에 청산되어
                 # 미보유가 되었어도) 매수 후보에서 제외 — 015 호환. allow_pyramiding
@@ -269,7 +286,14 @@ class BacktestEngine:
                 # 중복 매수를 차단한다.
                 if symbol in self.portfolio.positions:
                     continue
-                self._maybe_buy(symbol, row, today, result)
+                cost = self._maybe_buy(
+                    symbol,
+                    row,
+                    today,
+                    result,
+                    cumulative_buy_cost=cumulative_buy_cost,
+                )
+                cumulative_buy_cost += cost
 
             # === 4. 일별 자산 기록 ===
             peak_equity = max(peak_equity, self.portfolio.total_equity())
@@ -499,6 +523,57 @@ class BacktestEngine:
         # __post_init__에서 화이트리스트로 거부되므로 도달 불가 (방어).
         raise ValueError(f"지원하지 않는 priority_method: {method!r}")
 
+    def _apply_position_limits(
+        self,
+        *,
+        candidates: list[tuple[str, pd.Series]],
+        held_at_open_set: set[str],
+    ) -> list[tuple[str, pd.Series]]:
+        """priority 정렬 후 후보 리스트에 사전 한도(`max_positions` /
+        `max_daily_entries`)를 적용해 잘라낸 새 리스트를 반환 (04-l).
+
+        ``daily_buy_budget``은 실 체결 net_amount 누적이 필요해 매수 루프 내에서
+        동적으로 평가되므로 본 메서드 책임이 아님 (04-m, 매수 루프에서 처리).
+
+        결정론 (CLAUDE.md #8):
+            - 입력 순서는 priority가 결정 → 본 메서드는 항상 **앞에서부터** 잘라냄.
+            - max_positions: 보유 + 신규 후보 합이 상한을 넘는 만큼만 후보 자름.
+              예) 보유=2 + max_positions=3이면 신규는 1개만 통과.
+              `held_at_open_set`은 today 시작 시점 보유 (같은 today에 청산된 종목은
+              이미 entry candidate 단계에서 held_at_open으로 차단되므로 정합).
+            - max_daily_entries: 후보 리스트 자체를 N개로 잘라냄 (보유와 무관).
+            - 두 한도가 동시 지정 시 더 작은 결과(min)를 적용.
+
+        모든 한도가 None이면 입력 candidates를 그대로 반환 → 021 동작 보존
+        (Phase 1 골든 fixture 9지표 frozen 호환).
+
+        한도에 의해 skip된 후보는 본 메서드에서 단순 제거. 023에서 event_log
+        도입 시 skip 사유와 함께 기록할 후보가 된다 (인계 — 본 step의 scope 아님).
+        """
+        max_positions = self.config.max_positions
+        max_daily_entries = self.config.max_daily_entries
+
+        # 모두 None이면 021 동작 그대로 (Phase 1 골든 frozen).
+        if max_positions is None and max_daily_entries is None:
+            return candidates
+
+        # 사전 한도 두 값을 결합해 cutoff 계산. 후보 길이를 가장 작은 값으로 자른다.
+        cutoff = len(candidates)
+
+        if max_positions is not None:
+            # 보유 + 신규 후보 합이 max_positions 초과 시 신규 후보 자름.
+            # 신규 매수 가능 슬롯 = max(0, max_positions - 현재 보유 수).
+            # held_at_open_set은 today 시작 시점 보유 종목. 같은 today에 청산된
+            # 종목은 entry candidate 수집 단계에서 이미 held_at_open으로 제외되므로,
+            # "신규 매수 후보 합"은 곧 `len(candidates)`가 후보 측 표현.
+            available_slots = max(0, max_positions - len(held_at_open_set))
+            cutoff = min(cutoff, available_slots)
+
+        if max_daily_entries is not None:
+            cutoff = min(cutoff, max_daily_entries)
+
+        return candidates[:cutoff]
+
     # === 헬퍼 ===
 
     def _row_date(self, row: pd.Series, idx: int):
@@ -666,8 +741,11 @@ class BacktestEngine:
         row: pd.Series,
         today,
         result: BacktestResult,
-    ) -> None:
-        """매수 시도. 갭 초과 / 거래정지 / 예수금 부족(CashManager 시도) 시 skip.
+        *,
+        cumulative_buy_cost: float = 0.0,
+    ) -> float:
+        """매수 시도. 갭 초과 / 거래정지 / 예수금 부족(CashManager 시도) /
+        daily_buy_budget 초과 시 skip.
 
         signal_date = today (신호 발생일), execution_date = next_date
         (다음 거래일). cash_manager 강제 매도/매수는 그 시점에 즉시 체결되므로
@@ -675,25 +753,39 @@ class BacktestEngine:
 
         next_date 또는 next_open이 없는 경우(마지막 봉)는 본 메서드 진입 전에
         호출자가 차단하지만, 방어적으로 한 번 더 체크한다.
+
+        Parameters
+        ----------
+        cumulative_buy_cost
+            오늘(`today`) 본 매수 시점까지 호출자가 누적한 실 체결 비용
+            (이전 후보들의 net_amount 합). `daily_buy_budget`이 설정된 경우 본
+            후보의 net_amount를 더한 값이 budget을 초과하면 매수 skip.
+            022 — 매수 루프에서 동적 체크 (사전 차단 불가, 실 체결 비용이 필요).
+
+        Returns
+        -------
+        float
+            본 호출에서 실제로 발생한 net_amount (매수 성공). skip된 경우 0.0.
+            호출자가 daily_buy_budget 누적 추적에 사용.
         """
         if pd.isna(row.get("next_open")):
-            return
+            return 0.0
 
         next_open = float(row["next_open"])
         prev_close = float(row["adj_close"])
         execution_date = self._next_date_or_none(row)
         if execution_date is None:
-            return
+            return 0.0
 
         # 다음 거래일 거래정지 체크 (정확성 정책 13.4.2)
         next_volume = row.get("next_volume")
         if self.config.skip_no_volume and next_volume is not None and next_volume == 0:
-            return
+            return 0.0
 
         # 갭 체크 (정확성 정책 13.4.1)
         gap_pct = (next_open - prev_close) / prev_close * 100
         if gap_pct > self.config.max_gap_pct_for_entry:
-            return
+            return 0.0
 
         # 사전 fund 확보 (CashManager 옵션) — 강제 매도는 today 즉시 체결.
         if self.cash_manager is not None and self.cash_manager.enabled:
@@ -720,17 +812,28 @@ class BacktestEngine:
         )
 
         if exec_price <= 0:
-            return
+            return 0.0
 
         quantity = int(self.config.position_size_amount // exec_price)
         if quantity <= 0:
-            return
+            return 0.0
 
         execution = self.execution_model.calculate_buy_cost(
             exec_price, quantity, raw_price=next_open
         )
         if execution.net_amount > self.portfolio.cash:
-            return
+            return 0.0
+
+        # 022 — daily_buy_budget 동적 체크. cumulative + 본 후보 net_amount가
+        # budget을 초과하면 본 후보부터 skip (이후 후보도 누적이 더 커지므로
+        # 사실상 이 시점부터 거의 모두 skip 되지만, 작은 후보가 뒤에 남아 있을
+        # 가능성이 있어 호출자는 루프를 계속 돌린다 — 결정론은 priority 순서 유지).
+        if (
+            self.config.daily_buy_budget is not None
+            and cumulative_buy_cost + execution.net_amount
+            > self.config.daily_buy_budget
+        ):
+            return 0.0
 
         self.portfolio.buy(
             symbol=symbol,
@@ -741,6 +844,7 @@ class BacktestEngine:
             execution=execution,
             signal_date=today,
         )
+        return float(execution.net_amount)
 
     def _process_sell_at_price(
         self,
