@@ -58,8 +58,9 @@
 | 15 | PositionSizer 확장 + buy_skipped_cash_shortage event + trade_group 단위 익절/손절 — test-engineer 🟢 ship-go | ✅ 완료 (3 step) |
 | 16 | 데이터 파이프라인 완성 + 시장데이터 API (HistoricalBackfillJob / DailyUpdateJob / PykrxProvider / 종목검색 API + watchlists CRUD) — test-engineer 🟢 ship-go | ✅ 완료 (4 step) |
 | 17 | Export + API 잔존 완성 (trades.csv 컬럼 정합화 + ZIP 파일명 + trades API 응답 동기화) — test-engineer 🟢 ship-go | ✅ 완료 (2/2 step, 🟢 ship-go) |
+| 18 | 프론트엔드 UI 잔존 완성 (공통 컴포넌트 + BacktestRunPage + StrategyComparePage + 백테스트 결과 UI) | 🔄 모든 step 완료 (4/4), test-engineer 검증 대기 |
 
-**현재 작업 중**: 없음. **Phase 17 완료 🟢 ship-go** (1360 PASS / 0 FAIL / 골든 9지표 frozen 유지 / 09-h·09-m·10-t acceptance 통과). 다음 단계는 Phase 18 (프론트엔드 UI 잔존 완성, step 054~057).
+**현재 작업 중**: 없음. **Phase 18 모든 step 완료 (054~057), test-engineer 검증 대기** (249 PASS / 0 FAIL / 08-n·08-o·08-p 해소 / 08번 100% ✅ / 11번 100% ✅). 다음 단계는 test-engineer Phase 18 완료 검증 → ship-go 후 Phase 19 (테스트 완성 + E2E, step 058~059).
 
 > 위 Phase 1~7 표는 **자체 정의한 step 기준** 완료 표시입니다. **상세설계서 14개 문서 기준으로는 데모 수준**이며 핵심 미구현 다수가 있습니다.
 > 상세 비교는 [`리뷰/2026-05-10-010-외부코드리뷰.md`](../리뷰/2026-05-10-010-외부코드리뷰.md) 참조 (외부 리뷰 + 메인 세션 검증 완료).
