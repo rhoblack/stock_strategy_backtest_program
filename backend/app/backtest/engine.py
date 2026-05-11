@@ -171,6 +171,7 @@ EVENT_REASON_MAX_GAP = "skip_max_gap"                      # 13.4.1 — 갭 매�
 EVENT_REASON_FORCE_SELL_DELISTED = "force_sell_delisted"   # 13.4.5 — 상장폐지 강제 매도
 EVENT_REASON_CASH_SHORTAGE = "buy_skipped_cash_shortage"  # 05-j — CashManager 후에도 예산 부족
 EVENT_REASON_DRAWDOWN_LIMIT = "skip_drawdown_limit"       # 02-r — MDD 초과 시 신규 매수 중단
+EVENT_REASON_FORCE_SELL_DELISTED_ESTIMATED = "force_sell_delisting_estimated"  # 13-u — 상장폐지 예정 종가×0.5
 
 
 class BacktestEngine:
@@ -223,6 +224,7 @@ class BacktestEngine:
         universe_resolver: Callable[[date_type], list[str]] | None = None,
         delisting_dates: dict[str, date_type] | None = None,
         cancel_token: CancellationToken | None = None,
+        delisting_estimated_dates: dict[str, date_type] | None = None,
     ) -> BacktestResult:
         """단일 또는 복수 종목 시세에 대해 백테스트를 실행하고 결과를 반환.
 
@@ -254,6 +256,13 @@ class BacktestEngine:
             폐지일 이후로 진행되지 않도록 universe_resolver에서도 제외하는 것이
             권장이지만, 본 인자가 매수 후보 자체를 차단하지는 않는다 (그 책임은
             universe_resolver에 있음 — 본 인자는 보유 청산만 담당).
+
+        delisting_estimated_dates
+            `{symbol: 예정 폐지일}` 매핑 (정확성 정책 13.4.5 / 13-u, step 065).
+            today가 예정 폐지일과 일치하고 해당 종목을 보유 중이면 ``adj_close × 0.5``
+            가격으로 강제 매도 (정리매매 데이터 없는 경우 보수적 추정).
+            event_log: ``force_sell_delisting_estimated``.
+            ``delisting_dates``(실 폐지 — adj_close 100%)와는 별개 인자.
 
         Returns
         -------
@@ -325,6 +334,18 @@ class BacktestEngine:
                 self._force_sell_delisted_today(
                     today=today,
                     delisting_dates=delisting_dates,
+                    rows_by_date=rows_by_date,
+                    result=result,
+                )
+
+            # === 0-b. 상장폐지 예정 강제 매도 (정확성 정책 13.4.5 / 13-u, step 065) ===
+            # 정리매매 데이터가 없는 경우 당일 종가×0.5(50%)로 강제 청산.
+            # delisting_dates(실 폐지 100%)와 동일 구조지만 체결가 계산이 다름.
+            # 결정론: delisting_dates 처리 완료 후 진행 (이중 청산 방지).
+            if delisting_estimated_dates:
+                self._force_sell_delisted_estimated_today(
+                    today=today,
+                    delisting_estimated_dates=delisting_estimated_dates,
                     rows_by_date=rows_by_date,
                     result=result,
                 )
@@ -615,6 +636,71 @@ class BacktestEngine:
                 quantity=full_qty,
                 on_date=today,
                 reason=EVENT_REASON_FORCE_SELL_DELISTED,
+                result=result,
+            )
+
+    def _force_sell_delisted_estimated_today(
+        self,
+        *,
+        today: date_type,
+        delisting_estimated_dates: dict[str, date_type],
+        rows_by_date: dict[str, dict[date_type, pd.Series]],
+        result: BacktestResult,
+    ) -> None:
+        """today가 예정 폐지일과 일치하는 보유 종목을 당일 종가×0.5로 강제 청산 (13-u).
+
+        정확성 정책 13.4.5 — 정리매매 데이터가 없는 경우의 보수적 추정:
+            체결가 = 당일 ``adj_close × 0.5`` (50% 할인 강제매도).
+            시세가 결손이면 마지막 ``update_market_price``된 ``current_price × 0.5``
+            로 fallback.
+        event_log: ``force_sell_delisting_estimated``.
+        결정론: 보유 종목 정렬은 ``sorted(...)``로 명시.
+
+        ``delisting_dates``(실 폐지 — adj_close 100%)보다 *이후*에 처리되어 이중
+        청산이 발생하지 않는다 (step 065).
+        """
+        held = sorted(self.portfolio.positions.keys())
+        for symbol in held:
+            delisting_est_date = delisting_estimated_dates.get(symbol)
+            if delisting_est_date is None:
+                continue
+            if delisting_est_date != today:
+                continue
+            if symbol not in self.portfolio.positions:
+                continue
+
+            position = self.portfolio.positions[symbol]
+            full_qty = position.quantity
+
+            row_map = rows_by_date.get(symbol)
+            row = row_map.get(today) if row_map is not None else None
+            if row is not None:
+                base_price = float(row["adj_close"])
+            else:
+                base_price = float(position.current_price)
+
+            # 종가×0.5 — 정리매매 데이터 부재 시 보수적 추정 (13.4.5)
+            exit_price = base_price * 0.5
+
+            self._log_event(
+                date=today,
+                symbol=symbol,
+                event_type=EVENT_TYPE_FORCE_SELL,
+                reason=EVENT_REASON_FORCE_SELL_DELISTED_ESTIMATED,
+                detail={
+                    "quantity": full_qty,
+                    "base_price": base_price,
+                    "exit_price": exit_price,
+                    "discount_pct": 50,
+                    "row_present": row is not None,
+                },
+            )
+            self._process_sell_at_price(
+                symbol=symbol,
+                price=exit_price,
+                quantity=full_qty,
+                on_date=today,
+                reason=EVENT_REASON_FORCE_SELL_DELISTED_ESTIMATED,
                 result=result,
             )
 
