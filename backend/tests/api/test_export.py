@@ -292,3 +292,60 @@ def test_export_encoding_universe_history_utf8(client):
     r = client.get(f"/api/backtests/{run_id}/export/universe-history?encoding=utf-8")
     assert r.status_code == 200
     assert r.content[:3] != b"\xef\xbb\xbf"
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 09-h (step 052): trades.csv 컬럼 정합화
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_export_trades_csv_required_columns(client):
+    """trades.csv 헤더에 09번 §5 정의 컬럼 전체 포함 (09-h)."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/trades")
+    assert r.status_code == 200
+    text = r.content.decode("utf-8-sig")
+    headers = text.splitlines()[0].split(",")
+    required = [
+        "symbol", "name",
+        "entry_date", "entry_price", "entry_quantity", "entry_amount",
+        "exit_date", "exit_price", "exit_quantity", "exit_amount",
+        "profit", "profit_rate", "holding_days", "exit_reason", "signal_date",
+    ]
+    for col in required:
+        assert col in headers, f"trades.csv 누락 컬럼: {col!r}"
+
+
+def test_export_trades_csv_no_legacy_columns(client):
+    """구 컬럼(trade_group_id, remaining_quantity)은 trades.csv에 없어야 함 (09-h)."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/trades")
+    text = r.content.decode("utf-8-sig")
+    headers_line = text.splitlines()[0]
+    assert "trade_group_id" not in headers_line
+    assert "remaining_quantity" not in headers_line
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 09-m (step 052): ZIP 파일명 형식 backtest_{strategy_name}_{run_id}.zip
+# ───────────────────────────────────────────────────────────────────────────
+
+def test_export_zip_filename_format(client):
+    """ZIP Content-Disposition이 backtest_{strategy_name}_{run_id}.zip 형식 (09-m)."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/zip")
+    assert r.status_code == 200
+    cd = r.headers.get("content-disposition", "")
+    # filename이 backtest_로 시작하고 .zip으로 끝나야 함
+    assert "backtest_" in cd, f"Content-Disposition에 backtest_ 없음: {cd!r}"
+    assert ".zip" in cd, f"Content-Disposition에 .zip 없음: {cd!r}"
+    # run_id가 파일명에 포함되어야 함
+    assert str(run_id) in cd, f"run_id({run_id})가 파일명에 없음: {cd!r}"
+
+
+def test_export_zip_filename_no_run_prefix(client):
+    """ZIP 파일명이 구 형식 backtest_run_{id}.zip이 아님 (09-m)."""
+    run_id = _setup(client)
+    r = client.get(f"/api/backtests/{run_id}/export/zip")
+    cd = r.headers.get("content-disposition", "")
+    # 구 형식 "backtest_run_" 이 없어야 함
+    assert "backtest_run_" not in cd, f"구 파일명 형식 감지: {cd!r}"

@@ -1,9 +1,12 @@
-"""CsvExporter 단위 테스트 (step 035).
+"""CsvExporter 단위 테스트 (step 035 / 052).
 
 검증 항목:
 - 09-i: symbol_performance.csv — 집계 정확성 + total_profit DESC 정렬
 - 09-j: universe_history.csv — rows × symbols 전개 정확성
 - 09-l: encoding 옵션 — 각 옵션으로 출력된 bytes 첫 3바이트 검증
+- 09-h (step 052): trades.csv 컬럼 정합화 — entry_amount, exit_quantity,
+  exit_amount, holding_days, signal_date 포함 + 값 정확성
+- 09-m (step 052): ZIP 파일명 형식 — sanitize_filename / make_zip_filename
 
 픽스처는 services/conftest.py의 db_session / user를 재사용.
 """
@@ -16,13 +19,17 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.models.backtest import BacktestRun, BacktestStatus
+from app.models.enums import TradeExecutionType
 from app.models.strategy import Strategy
-from app.models.trade import TradeGroup
+from app.models.trade import TradeExecution, TradeGroup
 from app.models.universe_history import UniverseHistory
 from app.services.csv_exporter import (
     _to_bytes,
     export_symbol_performance_csv,
+    export_trades_csv,
     export_universe_history_csv,
+    make_zip_filename,
+    sanitize_filename,
 )
 
 # ─── 공통 픽스처 ────────────────────────────────────────────────────────────
@@ -426,3 +433,333 @@ class TestEncodingOption:
         assert result[:3] == b"\xef\xbb\xbf"
         text = result.decode("utf-8-sig")
         assert "symbol" in text
+
+
+# ─── 09-h (step 052): trades.csv 컬럼 정합화 ────────────────────────────────
+
+def _add_trade_pair(db_session, run_id, *, symbol="005930", name="삼성전자",
+                    entry_price=70_000, entry_qty=10, sell_price=77_000, sell_qty=10,
+                    signal_date_val=None, exit_reason="take_profit",
+                    entry_date=date(2024, 2, 1), exit_date=date(2024, 2, 16)):
+    """BUY + SELL TradeExecution 한 쌍을 가진 TradeGroup 생성 헬퍼 (09-h 테스트용)."""
+
+    closed_at = datetime(exit_date.year, exit_date.month, exit_date.day, tzinfo=UTC)
+    gross_buy = entry_price * entry_qty
+    gross_sell = sell_price * sell_qty
+    profit = gross_sell - gross_buy
+    profit_rate = round(profit / gross_buy * 100, 4)
+
+    tg = TradeGroup(
+        run_id=run_id,
+        symbol=symbol,
+        name=name,
+        entry_date=entry_date,
+        entry_price=entry_price,
+        entry_quantity=entry_qty,
+        remaining_quantity=0,
+        fully_closed_at=closed_at,
+        final_profit=profit,
+        final_profit_rate=profit_rate,
+        created_at=datetime.now(UTC),
+    )
+    db_session.add(tg)
+    db_session.flush()  # tg.id 확보
+
+    buy_ex = TradeExecution(
+        trade_group_id=tg.id,
+        run_id=run_id,
+        execution_date=entry_date,
+        signal_date=signal_date_val,
+        execution_type=TradeExecutionType.BUY,
+        price=entry_price,
+        quantity=entry_qty,
+        gross_amount=gross_buy,
+        fee=0,
+        tax=0,
+        net_amount=gross_buy,
+        realized_profit=None,
+        created_at=datetime.now(UTC),
+    )
+    db_session.add(buy_ex)
+
+    sell_ex = TradeExecution(
+        trade_group_id=tg.id,
+        run_id=run_id,
+        execution_date=exit_date,
+        signal_date=None,
+        execution_type=TradeExecutionType.SELL,
+        price=sell_price,
+        quantity=sell_qty,
+        gross_amount=gross_sell,
+        fee=0,
+        tax=0,
+        net_amount=gross_sell,
+        realized_profit=profit,
+        exit_reason=exit_reason,
+        created_at=datetime.now(UTC),
+    )
+    db_session.add(sell_ex)
+    db_session.commit()
+    db_session.refresh(tg)
+    return tg
+
+
+class TestTradesCsvColumns:
+    """09-h: trades.csv 컬럼 존재 및 값 정확성 테스트."""
+
+    def _parse_csv(self, content: str) -> tuple[list[str], list[dict]]:
+        """UTF-8 BOM str CSV를 헤더/행 목록으로 파싱."""
+        import csv as csv_mod
+        import io
+
+        # _to_csv는 BOM 문자를 포함한 str 반환
+        text = content.lstrip("\ufeff")
+        reader = csv_mod.DictReader(io.StringIO(text))
+        headers = reader.fieldnames or []
+        rows = list(reader)
+        return list(headers), rows
+
+    def test_required_columns_exist(self, db_session, backtest_run):
+        """09번 §5 정의 컬럼 전체가 헤더에 존재해야 한다."""
+        _add_trade_pair(db_session, backtest_run.id)
+        content = export_trades_csv(db_session, backtest_run)
+        headers, _ = self._parse_csv(content)
+
+        required = [
+            "symbol", "name",
+            "entry_date", "entry_price", "entry_quantity", "entry_amount",
+            "exit_date", "exit_price", "exit_quantity", "exit_amount",
+            "profit", "profit_rate", "holding_days", "exit_reason", "signal_date",
+        ]
+        for col in required:
+            assert col in headers, f"누락 컬럼: {col!r}"
+
+    def test_entry_amount_equals_price_times_qty(self, db_session, backtest_run):
+        """entry_amount = entry_price × entry_quantity."""
+        _add_trade_pair(
+            db_session, backtest_run.id,
+            entry_price=70_000, entry_qty=5,
+        )
+        content = export_trades_csv(db_session, backtest_run)
+        _, rows = self._parse_csv(content)
+        assert len(rows) == 1
+        assert int(rows[0]["entry_amount"]) == 70_000 * 5
+
+    def test_exit_quantity_sum_of_sell_executions(self, db_session, backtest_run):
+        """exit_quantity = SELL execution 수량 합계."""
+        _add_trade_pair(
+            db_session, backtest_run.id,
+            entry_price=70_000, entry_qty=10, sell_price=77_000, sell_qty=10,
+        )
+        content = export_trades_csv(db_session, backtest_run)
+        _, rows = self._parse_csv(content)
+        assert len(rows) == 1
+        assert int(rows[0]["exit_quantity"]) == 10
+
+    def test_exit_amount_sum_of_sell_net_amounts(self, db_session, backtest_run):
+        """exit_amount = SELL execution net_amount 합계."""
+        _add_trade_pair(
+            db_session, backtest_run.id,
+            entry_price=70_000, entry_qty=10, sell_price=77_000, sell_qty=10,
+        )
+        content = export_trades_csv(db_session, backtest_run)
+        _, rows = self._parse_csv(content)
+        # net_amount = 77_000 * 10 = 770_000 (fee=0, tax=0)
+        assert int(rows[0]["exit_amount"]) == 77_000 * 10
+
+    def test_holding_days_fully_closed(self, db_session, backtest_run):
+        """holding_days = fully_closed_at - entry_date (일수)."""
+        entry = date(2024, 3, 1)
+        exit_ = date(2024, 3, 20)  # 19일 차이
+        _add_trade_pair(
+            db_session, backtest_run.id,
+            entry_date=entry, exit_date=exit_,
+        )
+        content = export_trades_csv(db_session, backtest_run)
+        _, rows = self._parse_csv(content)
+        assert int(rows[0]["holding_days"]) == 19
+
+    def test_holding_days_empty_for_open_position(self, db_session, backtest_run):
+        """미청산(remaining_quantity > 0) 포지션은 holding_days 빈 문자열."""
+
+        # 미청산 TradeGroup (SELL execution 없음, fully_closed_at=None)
+        tg = TradeGroup(
+            run_id=backtest_run.id,
+            symbol="000660",
+            name="SK하이닉스",
+            entry_date=date(2024, 4, 1),
+            entry_price=150_000,
+            entry_quantity=5,
+            remaining_quantity=5,
+            fully_closed_at=None,
+            final_profit=None,
+            final_profit_rate=None,
+            created_at=datetime.now(UTC),
+        )
+        db_session.add(tg)
+        db_session.commit()
+
+        content = export_trades_csv(db_session, backtest_run)
+        _, rows = self._parse_csv(content)
+        assert len(rows) == 1
+        assert rows[0]["holding_days"] == ""
+
+    def test_signal_date_from_buy_execution(self, db_session, backtest_run):
+        """signal_date = BUY execution의 signal_date 값."""
+        signal = date(2024, 2, 5)
+        _add_trade_pair(
+            db_session, backtest_run.id,
+            signal_date_val=signal,
+            entry_date=date(2024, 2, 6),
+            exit_date=date(2024, 2, 20),
+        )
+        content = export_trades_csv(db_session, backtest_run)
+        _, rows = self._parse_csv(content)
+        assert rows[0]["signal_date"] == "2024-02-05"
+
+    def test_signal_date_empty_when_null(self, db_session, backtest_run):
+        """signal_date가 NULL이면 빈 문자열."""
+        _add_trade_pair(
+            db_session, backtest_run.id,
+            signal_date_val=None,
+        )
+        content = export_trades_csv(db_session, backtest_run)
+        _, rows = self._parse_csv(content)
+        assert rows[0]["signal_date"] == ""
+
+    def test_partial_sell_exit_quantity_aggregated(self, db_session, backtest_run):
+        """부분 매도 2회 → exit_quantity = 두 PARTIAL_SELL 수량 합계."""
+
+        entry_d = date(2024, 5, 1)
+        closed_at = datetime(2024, 5, 20, tzinfo=UTC)
+        tg = TradeGroup(
+            run_id=backtest_run.id,
+            symbol="035420",
+            name="NAVER",
+            entry_date=entry_d,
+            entry_price=180_000,
+            entry_quantity=10,
+            remaining_quantity=0,
+            fully_closed_at=closed_at,
+            final_profit=100_000,
+            final_profit_rate=5.56,
+            created_at=datetime.now(UTC),
+        )
+        db_session.add(tg)
+        db_session.flush()
+
+        # BUY
+        db_session.add(TradeExecution(
+            trade_group_id=tg.id, run_id=backtest_run.id,
+            execution_date=entry_d, signal_date=None,
+            execution_type=TradeExecutionType.BUY,
+            price=180_000, quantity=10,
+            gross_amount=1_800_000, fee=0, tax=0, net_amount=1_800_000,
+            created_at=datetime.now(UTC),
+        ))
+        # PARTIAL_SELL 1차: 5주
+        db_session.add(TradeExecution(
+            trade_group_id=tg.id, run_id=backtest_run.id,
+            execution_date=date(2024, 5, 10), signal_date=None,
+            execution_type=TradeExecutionType.PARTIAL_SELL,
+            price=185_000, quantity=5,
+            gross_amount=925_000, fee=0, tax=0, net_amount=925_000,
+            realized_profit=25_000, exit_reason="take_profit",
+            created_at=datetime.now(UTC),
+        ))
+        # SELL 2차: 5주
+        db_session.add(TradeExecution(
+            trade_group_id=tg.id, run_id=backtest_run.id,
+            execution_date=date(2024, 5, 20), signal_date=None,
+            execution_type=TradeExecutionType.SELL,
+            price=190_000, quantity=5,
+            gross_amount=950_000, fee=0, tax=0, net_amount=950_000,
+            realized_profit=75_000, exit_reason="take_profit",
+            created_at=datetime.now(UTC),
+        ))
+        db_session.commit()
+
+        content = export_trades_csv(db_session, backtest_run)
+        _, rows = self._parse_csv(content)
+        assert len(rows) == 1
+        assert int(rows[0]["exit_quantity"]) == 10   # 5 + 5
+        # exit_amount = 925_000 + 950_000 = 1_875_000
+        assert int(rows[0]["exit_amount"]) == 1_875_000
+
+    def test_no_legacy_columns(self, db_session, backtest_run):
+        """구 컬럼(trade_group_id, remaining_quantity, realized_profit_pct)은 제거."""
+        _add_trade_pair(db_session, backtest_run.id)
+        content = export_trades_csv(db_session, backtest_run)
+        headers, _ = self._parse_csv(content)
+        removed = ["trade_group_id", "remaining_quantity", "realized_profit_pct"]
+        for col in removed:
+            assert col not in headers, f"구 컬럼이 남아 있음: {col!r}"
+
+
+# ─── 09-m (step 052): ZIP 파일명 형식 ────────────────────────────────────────
+
+class TestSanitizeFilename:
+    """sanitize_filename + make_zip_filename 단위 테스트 (09-m)."""
+
+    def test_plain_ascii(self):
+        """일반 영문 전략명 — 변화 없음."""
+        assert sanitize_filename("MyStrategy") == "MyStrategy"
+
+    def test_spaces_to_underscore(self):
+        """공백 → 언더스코어."""
+        assert sanitize_filename("My Strategy") == "My_Strategy"
+
+    def test_special_chars_removed(self):
+        """특수문자 제거."""
+        result = sanitize_filename("전략@2024!")
+        assert "@" not in result
+        assert "!" not in result
+
+    def test_consecutive_underscores_collapsed(self):
+        """연속 언더스코어 → 단일."""
+        result = sanitize_filename("My  Strategy")  # 공백 2개
+        assert "__" not in result
+
+    def test_leading_trailing_underscores_stripped(self):
+        """앞뒤 언더스코어 제거."""
+        result = sanitize_filename("  거래량돌파전략  ")
+        assert not result.startswith("_")
+        assert not result.endswith("_")
+
+    def test_empty_string_default(self):
+        """빈 문자열 → 'strategy' 기본값."""
+        assert sanitize_filename("") == "strategy"
+
+    def test_only_special_chars_default(self):
+        """특수문자만 있으면 → 'strategy' 기본값."""
+        assert sanitize_filename("!!!") == "strategy"
+
+    def test_korean_preserved(self):
+        """한글 보존."""
+        result = sanitize_filename("거래량돌파전략")
+        assert "거래량돌파전략" in result
+
+    def test_make_zip_filename_format(self):
+        """make_zip_filename: backtest_{name}_{run_id}.zip 형식."""
+        name = make_zip_filename("거래량돌파전략", 100)
+        assert name.startswith("backtest_")
+        assert name.endswith(".zip")
+        assert "_100.zip" in name
+
+    def test_make_zip_filename_special_chars_in_name(self):
+        """전략명에 특수문자 포함 시 sanitize 적용."""
+        name = make_zip_filename("전략 (2024)!", 42)
+        assert "@" not in name
+        assert "!" not in name
+        assert "(" not in name
+        assert name.endswith("_42.zip")
+
+    def test_make_zip_filename_spaces(self):
+        """전략명 공백은 언더스코어로 치환."""
+        name = make_zip_filename("My Strategy", 7)
+        assert "My_Strategy" in name
+
+    def test_make_zip_filename_empty_strategy_name(self):
+        """빈 전략명 → 'strategy' 기본값."""
+        name = make_zip_filename("", 1)
+        assert name == "backtest_strategy_1.zip"

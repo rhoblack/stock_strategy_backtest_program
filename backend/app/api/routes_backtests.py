@@ -641,11 +641,12 @@ def export(
         )
     if kind == "zip":
         content_bytes = csv_exporter.export_zip(session, run)
-        filename = f"backtest_run_{run.id}.zip"
+        strategy_name = run.strategy.name if run.strategy is not None else "strategy"
+        filename = csv_exporter.make_zip_filename(strategy_name, run.id)
         return Response(
             content=content_bytes,
             media_type="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={"Content-Disposition": csv_exporter.make_content_disposition(filename)},
         )
 
     raise InvalidParameterValueError(

@@ -13,8 +13,10 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import zipfile
 from typing import Literal
+from urllib.parse import quote
 
 from sqlalchemy.orm import Session
 
@@ -90,6 +92,13 @@ def export_summary_csv(session: Session, run: BacktestRun) -> str:
 
 
 def export_trades_csv(session: Session, run: BacktestRun) -> str:
+    """trades.csv — 09번 §5 컬럼 전체 포함 (09-h).
+
+    컬럼 정의:
+        symbol, name, entry_date, entry_price, entry_quantity, entry_amount,
+        exit_date, exit_price, exit_quantity, exit_amount,
+        profit, profit_rate, holding_days, exit_reason, signal_date
+    """
     rows = []
     tgs = (
         session.query(TradeGroup)
@@ -104,28 +113,55 @@ def export_trades_csv(session: Session, run: BacktestRun) -> str:
             .order_by(TradeExecution.execution_date.asc(), TradeExecution.id.asc())
             .all()
         )
-        last_sell = next(
-            (e for e in reversed(execs) if e.execution_type.value != "BUY"), None
-        )
+
+        # BUY execution — signal_date 추출 (첫 BUY)
+        buy_exec = next((e for e in execs if e.execution_type.value == "BUY"), None)
+        signal_date_val = ""
+        if buy_exec is not None and buy_exec.signal_date is not None:
+            signal_date_val = buy_exec.signal_date.isoformat()
+
+        # SELL/PARTIAL_SELL executions — exit 관련 집계
+        sell_execs = [e for e in execs if e.execution_type.value != "BUY"]
+        last_sell = sell_execs[-1] if sell_execs else None
+
+        exit_quantity = sum(e.quantity for e in sell_execs) if sell_execs else ""
+        exit_amount = sum(e.net_amount for e in sell_execs) if sell_execs else ""
+
+        # entry_amount = entry_price × entry_quantity (매수 총 비용 개념: gross)
+        entry_amount = tg.entry_price * tg.entry_quantity
+
+        # holding_days = fully_closed_at(date) - entry_date (완전 청산 시만)
+        holding_days = ""
+        if tg.fully_closed_at is not None:
+            closed_date = (
+                tg.fully_closed_at.date()
+                if hasattr(tg.fully_closed_at, "date")
+                else tg.fully_closed_at
+            )
+            holding_days = (closed_date - tg.entry_date).days
+
         rows.append({
-            "trade_group_id": tg.id,
             "symbol": tg.symbol,
             "name": tg.name,
             "entry_date": tg.entry_date.isoformat(),
             "entry_price": tg.entry_price,
             "entry_quantity": tg.entry_quantity,
+            "entry_amount": entry_amount,
             "exit_date": last_sell.execution_date.isoformat() if last_sell else "",
             "exit_price": last_sell.price if last_sell else "",
+            "exit_quantity": exit_quantity,
+            "exit_amount": exit_amount,
+            "profit": tg.final_profit if tg.final_profit is not None else "",
+            "profit_rate": tg.final_profit_rate if tg.final_profit_rate is not None else "",
+            "holding_days": holding_days,
             "exit_reason": last_sell.exit_reason if last_sell else "",
-            "remaining_quantity": tg.remaining_quantity,
-            "realized_profit": tg.final_profit if tg.final_profit is not None else "",
-            "realized_profit_pct": tg.final_profit_rate if tg.final_profit_rate is not None else "",
+            "signal_date": signal_date_val,
         })
     return _to_csv(rows, [
-        "trade_group_id", "symbol", "name",
-        "entry_date", "entry_price", "entry_quantity",
-        "exit_date", "exit_price", "exit_reason",
-        "remaining_quantity", "realized_profit", "realized_profit_pct",
+        "symbol", "name",
+        "entry_date", "entry_price", "entry_quantity", "entry_amount",
+        "exit_date", "exit_price", "exit_quantity", "exit_amount",
+        "profit", "profit_rate", "holding_days", "exit_reason", "signal_date",
     ])
 
 
@@ -315,6 +351,52 @@ def export_universe_history_csv(
 
 def export_strategy_snapshot_json(run: BacktestRun) -> str:
     return json.dumps(run.strategy_snapshot_json, ensure_ascii=False, indent=2)
+
+
+def sanitize_filename(name: str) -> str:
+    """전략명을 ZIP 파일명에 사용 가능한 URL-safe 문자열로 변환 (09-m).
+
+    처리 순서:
+        1. 공백 → 언더스코어
+        2. 알파벳·숫자·한글·언더스코어·하이픈 이외 문자 제거
+        3. 연속 언더스코어 → 단일 언더스코어
+        4. 앞뒤 언더스코어 제거
+        5. 빈 문자열이면 "strategy" 기본값 반환
+    """
+    s = name.strip()
+    s = s.replace(" ", "_")
+    # 알파벳(대소문자), 숫자, 한글, 언더스코어, 하이픈만 허용
+    s = re.sub(r"[^\w\-]", "", s, flags=re.UNICODE)
+    s = re.sub(r"_+", "_", s)
+    s = s.strip("_")
+    return s if s else "strategy"
+
+
+def make_zip_filename(strategy_name: str, run_id: int) -> str:
+    """ZIP 파일명 생성: backtest_{strategy_name}_{run_id}.zip (09-m)."""
+    safe_name = sanitize_filename(strategy_name)
+    return f"backtest_{safe_name}_{run_id}.zip"
+
+
+def make_content_disposition(filename: str) -> str:
+    """HTTP Content-Disposition 헤더 값 생성 (RFC 5987).
+
+    파일명에 non-ASCII(한글 등) 포함 시 latin-1 인코딩이 실패하므로
+    RFC 5987 형식 (filename*=UTF-8''<percent-encoded>) 사용.
+    ASCII 호환 폴백 파일명 (filename=) 도 함께 제공해 구형 클라이언트 지원.
+
+    ASCII 범위만 사용하는 파일명은 단순 filename= 형식 반환.
+    """
+    try:
+        filename.encode("ascii")
+        # ASCII 안전 — 단순 형식
+        return f'attachment; filename="{filename}"'
+    except UnicodeEncodeError:
+        # non-ASCII 포함 — RFC 5987 percent-encoding
+        encoded = quote(filename, safe="")
+        # 폴백 ASCII 파일명 (한글 제거 → ASCII만 남김)
+        ascii_fallback = re.sub(r"[^\x20-\x7e]", "_", filename).strip("_") or "download"
+        return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}'
 
 
 def export_zip(session: Session, run: BacktestRun) -> bytes:
