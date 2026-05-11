@@ -20,5 +20,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test-setup.ts"],
+    /** e2e/ 폴더의 Playwright 테스트 파일은 vitest에서 제외 */
+    exclude: ["node_modules/**", "e2e/**"],
   },
 });

@@ -97,6 +97,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [059-playwright-e2e-tests](./2026-05-11-059-playwright-e2e-tests.md) | 19 | frontend-developer | ✅ | **Phase 19 마지막 step**: Playwright E2E 5건 (12-k) — page.route() API 모킹 / 5/5 PASS + 249 vitest PASS |
 | 2026-05-11 | [058-data-pipeline-integration-tests](./2026-05-11-058-data-pipeline-integration-tests.md) | 19 | backtest-engine-developer | ✅ | data_pipeline 통합 테스트 19건 (12-j) — BackfillCheckpoint/DailyUpdate/PykrxProvider/AdjustedPrice/RateLimiter/Scheduler — 1379 PASS |
 | 2026-05-11 | [057-backtest-result-ui-remaining](./2026-05-11-057-backtest-result-ui-remaining.md) | 18 | frontend-developer | ✅ | **Phase 18 마지막 step**: 월별 차트 + 리스크/자금 탭 실데이터 + 봉차트 툴팁 (08-n·o·p) — 249 PASS |
 | 2026-05-11 | [056-strategy-compare-page](./2026-05-11-056-strategy-compare-page.md) | 18 | frontend-developer | ✅ | StrategyComparePage 실 비교 기능 + TanStack Table 전략 목록 (11-i·11-j) — 236 PASS |
