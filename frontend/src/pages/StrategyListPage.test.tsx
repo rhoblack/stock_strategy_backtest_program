@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import StrategyListPage from "./StrategyListPage";
@@ -172,5 +172,96 @@ describe("StrategyListPage", () => {
     renderPage();
     const link = screen.getByRole("link", { name: "백테스트 실행" });
     expect(link).toHaveAttribute("href", "/backtests/new?strategy_id=1");
+  });
+
+  // ── TanStack Table 신규 테스트 ────────────────────────────────────────────
+
+  it("TanStack Table 테이블이 렌더된다 (strategy-table)", () => {
+    useStrategiesMock.mockReturnValue({
+      data: [baseStrategy],
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useStrategies>);
+
+    renderPage();
+    expect(screen.getByTestId("strategy-table")).toBeInTheDocument();
+  });
+
+  it("전략명 필터: 입력하면 일치하는 전략만 표시", () => {
+    const strategies: StrategyOut[] = [
+      { ...baseStrategy, id: 1, name: "RSI 전략" },
+      { ...baseStrategy, id: 2, name: "이동평균 전략" },
+      { ...baseStrategy, id: 3, name: "볼린저밴드 전략" },
+    ];
+
+    useStrategiesMock.mockReturnValue({
+      data: strategies,
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useStrategies>);
+
+    renderPage();
+
+    const filterInput = screen.getByTestId("strategy-name-filter");
+    fireEvent.change(filterInput, { target: { value: "RSI" } });
+
+    // RSI 전략만 보임
+    expect(screen.getByText("RSI 전략")).toBeInTheDocument();
+    // 나머지는 숨김
+    expect(screen.queryByText("이동평균 전략")).not.toBeInTheDocument();
+    expect(screen.queryByText("볼린저밴드 전략")).not.toBeInTheDocument();
+  });
+
+  it("전략명 정렬: 헤더 클릭 시 정렬 방향 표시자 변경", () => {
+    const strategies: StrategyOut[] = [
+      { ...baseStrategy, id: 1, name: "볼린저밴드 전략" },
+      { ...baseStrategy, id: 2, name: "RSI 전략" },
+    ];
+
+    useStrategiesMock.mockReturnValue({
+      data: strategies,
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useStrategies>);
+
+    renderPage();
+
+    // 초기: 정렬 없음 (⇅ 표시)
+    const nameHeader = screen.getByTestId("th-name");
+    expect(nameHeader).toHaveTextContent("⇅");
+
+    // 클릭 1회: 오름차순 (▲)
+    fireEvent.click(nameHeader);
+    expect(nameHeader).toHaveTextContent("▲");
+
+    // 클릭 2회: 내림차순 (▼)
+    fireEvent.click(nameHeader);
+    expect(nameHeader).toHaveTextContent("▼");
+  });
+
+  it("전략명 필터 초기화: 빈 문자열로 바꾸면 전체 표시", () => {
+    const strategies: StrategyOut[] = [
+      { ...baseStrategy, id: 1, name: "RSI 전략" },
+      { ...baseStrategy, id: 2, name: "이동평균 전략" },
+    ];
+
+    useStrategiesMock.mockReturnValue({
+      data: strategies,
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useStrategies>);
+
+    renderPage();
+
+    const filterInput = screen.getByTestId("strategy-name-filter");
+
+    // 필터 적용
+    fireEvent.change(filterInput, { target: { value: "RSI" } });
+    expect(screen.queryByText("이동평균 전략")).not.toBeInTheDocument();
+
+    // 필터 초기화
+    fireEvent.change(filterInput, { target: { value: "" } });
+    expect(screen.getByText("RSI 전략")).toBeInTheDocument();
+    expect(screen.getByText("이동평균 전략")).toBeInTheDocument();
   });
 });

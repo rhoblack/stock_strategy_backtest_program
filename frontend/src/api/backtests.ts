@@ -18,6 +18,29 @@ export type BacktestRunOut = {
   finished_at: string | null;
 };
 
+export type BacktestListItem = {
+  id: number;
+  strategy_id: number;
+  run_name: string;
+  status: BacktestRunOut["status"];
+  progress_pct: number;
+  start_date: string | null;
+  end_date: string | null;
+  initial_cash: number;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error_message: string | null;
+};
+
+export type BacktestListResponse = {
+  items: BacktestListItem[];
+  total_count: number;
+  total_pages: number;
+  page: number;
+  page_size: number;
+};
+
 export type BacktestSummaryOut = {
   run_id: number;
   status: BacktestRunOut["status"];
@@ -120,6 +143,17 @@ export async function fetchDailyEquity(
   ).data;
 }
 
+export async function fetchBacktestList(params?: {
+  strategy_id?: number;
+  status?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<BacktestListResponse> {
+  return (
+    await api.get<BacktestListResponse>("/api/backtests", { params })
+  ).data;
+}
+
 // === Hooks ===
 
 export function useCreateBacktest() {
@@ -165,4 +199,35 @@ export function useDailyEquity(runId: number | null, enabled = true) {
     queryFn: () => fetchDailyEquity(runId!),
     enabled: enabled && runId !== null,
   });
+}
+
+export function useBacktestList(params?: {
+  strategy_id?: number;
+  status?: string;
+  page?: number;
+  page_size?: number;
+}) {
+  return useQuery({
+    queryKey: ["backtest-list", params],
+    queryFn: () => fetchBacktestList(params),
+  });
+}
+
+/**
+ * 전략의 최신 완료된 백테스트 run_id를 반환합니다.
+ * completed 상태의 가장 최근 백테스트 (created_at DESC → items[0]).
+ */
+export function useLatestCompletedRunId(
+  strategyId: number | null,
+): { runId: number | null; isLoading: boolean } {
+  const { data, isLoading } = useBacktestList(
+    strategyId !== null
+      ? { strategy_id: strategyId, status: "completed", page_size: 1 }
+      : undefined,
+  );
+  const runId =
+    strategyId !== null && data && data.items.length > 0
+      ? data.items[0].id
+      : null;
+  return { runId, isLoading };
 }

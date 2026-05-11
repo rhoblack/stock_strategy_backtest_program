@@ -96,6 +96,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [056-strategy-compare-page](./2026-05-11-056-strategy-compare-page.md) | 18 | frontend-developer | ✅ | StrategyComparePage 실 비교 기능 + TanStack Table 전략 목록 (11-i·11-j) — 236 PASS |
 | 2026-05-11 | [055-backtest-run-page-and-strategy-list](./2026-05-11-055-backtest-run-page-and-strategy-list.md) | 18 | frontend-developer | ✅ | BacktestRunPage synthetic 제거 + UniverseSelector 연결 + last_backtest 뱃지 (11-k·11-l) — 227 PASS |
 | 2026-05-11 | [054-common-ui-components-and-charts](./2026-05-11-054-common-ui-components-and-charts.md) | 18 | frontend-developer | ✅ | Button/Input/Card/Tabs 공통 컴포넌트 + 차트 분리 (11-m·11-n) — 218 PASS |
 | 2026-05-11 | [053-trades-api-column-sync](./2026-05-11-053-trades-api-column-sync.md) | 17 | backend-api-engineer | ✅ | **Phase 17 마지막 step**: trades API 응답 컬럼 동기화 (10-t) — 1360 PASS |
