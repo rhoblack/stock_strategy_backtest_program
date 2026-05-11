@@ -284,6 +284,27 @@ def get_daily_price(
     return session.execute(stmt).scalar_one_or_none()
 
 
+def get_latest_price_date(
+    session: Session,
+    symbol: str,
+) -> date_type | None:
+    """symbol의 daily_prices 중 가장 최근 날짜를 반환.
+
+    DB에 데이터가 없으면 None 반환.
+
+    DailyUpdateJob 증분 판단 (14번 §6.2):
+        last = get_latest_price_date(session, symbol)
+        collect_from = last + timedelta(days=1) if last else config.start_date
+
+    결정론: MAX 집계는 단일 결과이므로 정렬 불필요.
+    """
+    from sqlalchemy import func
+
+    stmt = select(func.max(DailyPrice.date)).where(DailyPrice.symbol == symbol)
+    result = session.execute(stmt).scalar_one_or_none()
+    return result  # date_type or None
+
+
 def get_price_range(
     session: Session,
     symbol: str,

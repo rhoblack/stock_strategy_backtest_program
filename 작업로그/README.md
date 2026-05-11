@@ -95,6 +95,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [049-daily-update-job](./2026-05-11-049-daily-update-job.md) | 16 | market-data-engineer | ✅ | DailyUpdateJob 증분 수집 + MissingDataCheckJob 연동 (14-m) — 1265 PASS |
 | 2026-05-11 | [048-historical-backfill-job](./2026-05-11-048-historical-backfill-job.md) | 16 | market-data-engineer | ✅ | HistoricalBackfillJob 7단계 + BackfillCheckpoint + RateLimiter (14-l) — 1258 PASS |
 | 2026-05-11 | [047-trade-group-exit](./2026-05-11-047-trade-group-exit.md) | 15 | backtest-engine-developer | ✅ | **Phase 15 마지막 step**: trade_group별 익절/손절 (05-l) + trailing_stop 회귀 (04-p) — 1226 PASS |
 | 2026-05-11 | [046-cash-shortage-event](./2026-05-11-046-cash-shortage-event.md) | 15 | backtest-engine-developer | ✅ | buy_skipped_cash_shortage event_log (05-j) + update_peak_price 순서 검증 (05-k) — 1217 PASS |

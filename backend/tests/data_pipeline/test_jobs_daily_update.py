@@ -351,7 +351,11 @@ def test_daily_update_clock_injection_is_deterministic(session_factory) -> None:
 
 
 def test_daily_update_determinism_repeated_runs_same_state(session_factory) -> None:
-    """동일 입력 두 번 실행 — 두 번째 호출은 upsert(갱신)만 발생, DB 상태 동일."""
+    """동일 입력 두 번 실행 — DB 상태가 동일 (중복 row 없음).
+
+    incremental=True 기본값에서 2회차는 skip (symbols_skipped_uptodate>0)
+    → DB row 수는 동일 (결정론). stats 수치는 1회차(수집)와 2회차(skip)가 다를 수 있음.
+    """
     as_of = date(2024, 1, 2)
     symbols = (_make_symbol("005930"),)
     prices = (_make_price("005930", as_of, 70_000),)
@@ -361,7 +365,7 @@ def test_daily_update_determinism_repeated_runs_same_state(session_factory) -> N
     )
 
     job = DailyUpdateJob(
-        config=DailyUpdateConfig(as_of_date=as_of, markets=("KOSPI",)),
+        config=DailyUpdateConfig(as_of_date=as_of, markets=("KOSPI",), incremental=False),
         collector=collector,
         session_factory=session_factory,
     )
@@ -369,7 +373,7 @@ def test_daily_update_determinism_repeated_runs_same_state(session_factory) -> N
     r2 = job.run()
 
     assert r1.success is True and r2.success is True
-    assert r1.stats == r2.stats  # 결정론
+    assert r1.stats == r2.stats  # incremental=False 이면 두 번 모두 upsert → stats 동일
 
     session: Session = session_factory()
     try:
