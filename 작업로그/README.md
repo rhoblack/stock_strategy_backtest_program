@@ -60,11 +60,9 @@
 | 17 | Export + API 잔존 완성 (trades.csv 컬럼 정합화 + ZIP 파일명 + trades API 응답 동기화) — test-engineer 🟢 ship-go | ✅ 완료 (2/2 step, 🟢 ship-go) |
 | 18 | 프론트엔드 UI 잔존 완성 (공통 컴포넌트 + BacktestRunPage + StrategyComparePage + 백테스트 결과 UI) | ✅ 완료 (4/4 step, 🟢 ship-go) |
 | 19 | 테스트 완성 + E2E (data_pipeline 통합 테스트 + Playwright E2E) | ✅ 완료 (2/2 step, 🟢 ship-go) |
+| 20 | 최종 검증 + 문서화 (전체 회귀 + 설계서 최종 동기화 + 04-q 해소 + TestAlembicRevisionChain fix) | ✅ 완료 (1/1 step, 🟢 ship-go) |
 
-**현재 작업 중**: 없음. **Phase 19 완료 (🟢 ship-go)** — 5 E2E PASS / 249 vitest PASS / 1379 pytest PASS / 검증(12) 카테고리 100% ✅ / 종합 207/212 (97.64%). 다음 단계는 Phase 20 (최종 검증 + 문서화, step 060) — 전체 회귀 검증 + 설계서 최종 동기화.
-
-**Follow-up (Phase 19 → Phase 20 인계)**:
-- `test_phase13_export_cancel_e2e.py::TestAlembicRevisionChain` 2건 경로 하드코딩 버그 — `Path(__file__).resolve().parents[N] / "alembic"` 방식으로 수정 필요 (test-engineer 권고). Phase 20 step 060 또는 선행 fix step으로 처리.
+**현재 작업 중**: 없음. **전체 프로젝트 208/208 = 100% 완료 (Phase 20 🟢 ship-go)** — 1379 pytest PASS / 249 vitest PASS / 5 Playwright E2E PASS / 전 카테고리 100% ✅ (백엔드 핵심 99/99, API/보안 20/20, 검증 11/11, UI 54/54, 시장데이터/파이프라인 24/24).
 
 > 위 Phase 1~7 표는 **자체 정의한 step 기준** 완료 표시입니다. **상세설계서 14개 문서 기준으로는 데모 수준**이며 핵심 미구현 다수가 있습니다.
 > 상세 비교는 [`리뷰/2026-05-10-010-외부코드리뷰.md`](../리뷰/2026-05-10-010-외부코드리뷰.md) 참조 (외부 리뷰 + 메인 세션 검증 완료).
