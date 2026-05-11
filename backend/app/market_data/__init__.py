@@ -4,8 +4,8 @@
 
 1단계 (016): DB 모델 + 마이그레이션 + repositories CRUD 스켈레톤.
 2단계 (018): BaseProvider + LocalCsvProvider + PriceLoader.
-3단계 (019, 현재): UniverseSelector (06번 §8 공통 필터 + 06번 §9 selection_method).
-4단계 (Phase 11 예정): PykrxProvider / data_pipeline (collectors / processors / jobs).
+3단계 (019): UniverseSelector (06번 §8 공통 필터 + 06번 §9 selection_method).
+4단계 (050): PykrxProvider — pykrx 기반 Provider (ingest_into + get_price_df 직접 반환).
 
 타 모듈 사용법:
     from app.market_data import repositories
@@ -23,6 +23,11 @@
         config={"market": "KOSPI", "selection_method": "ALL"},
         as_of_date=date(2024, 1, 8),
     )
+
+    from app.market_data.pykrx_provider import PykrxProvider
+    provider = PykrxProvider()
+    df = provider.get_price_df("005930", date(2024, 1, 2), date(2024, 1, 31))
+    # df 컬럼: PYKRX_PROVIDER_COLUMNS (adj_open/adj_high/adj_low/adj_close/adj_volume 포함)
 """
 
 from app.market_data import repositories
