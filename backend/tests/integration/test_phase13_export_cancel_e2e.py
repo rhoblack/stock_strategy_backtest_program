@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -403,8 +404,9 @@ class TestAlembicRevisionChain:
         from alembic.config import Config as AlembicConfig
         from alembic.script import ScriptDirectory
 
-        alembic_cfg = AlembicConfig("backend/alembic.ini")
-        alembic_cfg.set_main_option("script_location", "backend/alembic")
+        _repo_root = Path(__file__).resolve().parents[3]
+        alembic_cfg = AlembicConfig(str(_repo_root / "backend" / "alembic.ini"))
+        alembic_cfg.set_main_option("script_location", str(_repo_root / "backend" / "alembic"))
         alembic_cfg.set_main_option("sqlalchemy.url", "sqlite:///:memory:")
 
         script = ScriptDirectory.from_config(alembic_cfg)
@@ -416,8 +418,9 @@ class TestAlembicRevisionChain:
         from alembic.config import Config as AlembicConfig
         from alembic.script import ScriptDirectory
 
-        alembic_cfg = AlembicConfig("backend/alembic.ini")
-        alembic_cfg.set_main_option("script_location", "backend/alembic")
+        _repo_root = Path(__file__).resolve().parents[3]
+        alembic_cfg = AlembicConfig(str(_repo_root / "backend" / "alembic.ini"))
+        alembic_cfg.set_main_option("script_location", str(_repo_root / "backend" / "alembic"))
         alembic_cfg.set_main_option("sqlalchemy.url", "sqlite:///:memory:")
 
         script = ScriptDirectory.from_config(alembic_cfg)
