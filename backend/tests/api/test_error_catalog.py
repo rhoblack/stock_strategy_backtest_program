@@ -43,6 +43,8 @@ from app.core.exceptions import (
     UniverseEmptyError,
     UniversePreviewFailedError,
     UnknownConditionTypeError,
+    WatchlistItemAlreadyExistsError,
+    WatchlistNotFoundError,
 )
 from app.main import app
 
@@ -82,6 +84,9 @@ _CATALOG_CODES = {
     # Export
     "EXPORT_FAILED",
     "EXPORT_TOO_LARGE",
+    # Watchlist (10번 5-t절)
+    "WATCHLIST_NOT_FOUND",
+    "WATCHLIST_ITEM_ALREADY_EXISTS",
 }
 
 
@@ -145,6 +150,9 @@ def test_code_status_map_no_unlisted_codes():
     # 500
     ("EXPORT_FAILED", 500),
     ("APP_ERROR", 500),
+    # Watchlist
+    ("WATCHLIST_NOT_FOUND", 404),
+    ("WATCHLIST_ITEM_ALREADY_EXISTS", 409),
 ])
 def test_code_status_mapping(code: str, expected_status: int):
     """CODE_STATUS_MAP에서 코드 → HTTP 상태 매핑이 §7.2와 일치."""
@@ -185,6 +193,8 @@ def test_code_status_mapping(code: str, expected_status: int):
     (ExportTooLargeError, "EXPORT_TOO_LARGE"),
     (PositionConditionMisuseError, "POSITION_CONDITION_MISUSE"),
     (TimeseriesConditionMisuseError, "TIMESERIES_CONDITION_MISUSE"),
+    (WatchlistNotFoundError, "WATCHLIST_NOT_FOUND"),
+    (WatchlistItemAlreadyExistsError, "WATCHLIST_ITEM_ALREADY_EXISTS"),
 ])
 def test_exception_class_code(exc_class, expected_code: str):
     """각 AppError 서브클래스의 code 속성이 카탈로그 코드와 일치."""

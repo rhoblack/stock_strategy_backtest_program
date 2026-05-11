@@ -201,3 +201,21 @@ class ExportTooLargeError(AppError):
     """Export 결과가 허용 크기를 초과."""
 
     code = "EXPORT_TOO_LARGE"
+
+
+# === Watchlist (10번 5-t절 / 07번 13절) ===
+
+
+class WatchlistNotFoundError(AppError):
+    """해당 id의 watchlist가 없거나 다른 user 소유 (404).
+
+    user_id scope (10.9) 보안상 '권한 없음'도 404로 반환 — 존재 여부를 노출하지 않는다.
+    """
+
+    code = "WATCHLIST_NOT_FOUND"
+
+
+class WatchlistItemAlreadyExistsError(AppError):
+    """동일 watchlist에 이미 추가된 종목 (409 Conflict)."""
+
+    code = "WATCHLIST_ITEM_ALREADY_EXISTS"

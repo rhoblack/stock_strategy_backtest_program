@@ -20,6 +20,7 @@ from app.models.trade import TradeExecution, TradeGroup
 from app.models.trading_calendar import TradingCalendar
 from app.models.universe_history import UniverseHistory
 from app.models.user import User
+from app.models.watchlist import Watchlist, WatchlistItem
 
 __all__ = [
     "BacktestResult",
@@ -41,4 +42,6 @@ __all__ = [
     "TradingCalendar",
     "UniverseHistory",
     "User",
+    "Watchlist",
+    "WatchlistItem",
 ]

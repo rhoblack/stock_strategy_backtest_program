@@ -95,6 +95,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [051-symbol-search-watchlist-api](./2026-05-11-051-symbol-search-watchlist-api.md) | 16 | backend-api-engineer | ✅ | **Phase 16 마지막 step**: 종목 검색 API + watchlists CRUD (06-k·10-s·07-q) — 1330 PASS |
 | 2026-05-11 | [050-pykrx-provider](./2026-05-11-050-pykrx-provider.md) | 16 | market-data-engineer | ✅ | PykrxProvider 완전 구현 (06-j) — 1279 PASS |
 | 2026-05-11 | [049-daily-update-job](./2026-05-11-049-daily-update-job.md) | 16 | market-data-engineer | ✅ | DailyUpdateJob 증분 수집 + MissingDataCheckJob 연동 (14-m) — 1265 PASS |
 | 2026-05-11 | [048-historical-backfill-job](./2026-05-11-048-historical-backfill-job.md) | 16 | market-data-engineer | ✅ | HistoricalBackfillJob 7단계 + BackfillCheckpoint + RateLimiter (14-l) — 1258 PASS |

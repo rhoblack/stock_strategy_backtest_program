@@ -70,6 +70,9 @@ CODE_STATUS_MAP: dict[str, int] = {
     # Export (500 or 400 계열 선택: 대용량은 400, 처리 실패는 500)
     "EXPORT_FAILED": status.HTTP_500_INTERNAL_SERVER_ERROR,
     "EXPORT_TOO_LARGE": status.HTTP_400_BAD_REQUEST,
+    # Watchlist (10번 5-t절)
+    "WATCHLIST_NOT_FOUND": status.HTTP_404_NOT_FOUND,
+    "WATCHLIST_ITEM_ALREADY_EXISTS": status.HTTP_409_CONFLICT,
     # 500 fallback
     "APP_ERROR": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }

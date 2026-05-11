@@ -19,6 +19,7 @@ from app.api.routes_backtests import router as backtests_router
 from app.api.routes_conditions import router as conditions_router
 from app.api.routes_market import calendar_router, symbols_router
 from app.api.routes_strategies import router as strategies_router
+from app.api.routes_watchlists import router as watchlists_router
 
 app = FastAPI(
     title="Stock Strategy Lab API",
@@ -56,3 +57,5 @@ app.include_router(backtests_router)
 # 시장 데이터 라우터 (10-o)
 app.include_router(symbols_router)
 app.include_router(calendar_router)
+# 관심종목 라우터 (10-t, 07-q)
+app.include_router(watchlists_router)

@@ -46,6 +46,58 @@ symbols_router = APIRouter(prefix="/api/symbols", tags=["market-data"])
 calendar_router = APIRouter(prefix="/api", tags=["market-data"])
 
 
+@symbols_router.get(
+    "",
+    response_model=list[SymbolSearchItem],
+    summary="종목 검색 (10-s, 06-k) — GET /api/symbols",
+)
+def list_symbols(
+    q: str = Query(default="", description="종목코드 또는 종목명 검색어 (LIKE)"),
+    market: str | None = Query(default=None, description="KOSPI | KOSDAQ | KONEX (미지정 시 전체)"),
+    limit: int = Query(default=20, ge=1, le=100, description="최대 결과 수 (기본 20, 최대 100)"),
+    session: Session = Depends(get_db_session),
+):
+    """GET /api/symbols?q=삼성&market=KOSPI&limit=20.
+
+    symbol 또는 name LIKE '%q%' 검색.
+    market 지정 시 해당 시장만, 미지정 시 전체.
+    삭제된(delisting_date IS NOT NULL) 종목도 포함 — 과거 백테스트용.
+    활성 종목 우선, symbol ASC 정렬.
+    user_id 스코프 불필요 (공개 읽기 전용).
+    """
+    stmt = session.query(Symbol)
+    if q:
+        like_q = f"%{q}%"
+        stmt = stmt.filter(
+            or_(
+                Symbol.symbol.ilike(like_q),
+                Symbol.name.ilike(like_q),
+            )
+        )
+    if market and market.upper() != "ALL":
+        stmt = stmt.filter(Symbol.market == market)
+
+    stmt = stmt.order_by(
+        Symbol.delisting_date.is_(None).desc(),
+        Symbol.symbol.asc(),
+    ).limit(limit)
+
+    rows = stmt.all()
+    return [
+        SymbolSearchItem(
+            symbol=s.symbol,
+            name=s.name,
+            market=s.market,
+            sector=s.sector,
+            listing_date=s.listing_date,
+            delisting_date=s.delisting_date,
+            is_etf=s.is_etf,
+            is_spac=s.is_spac,
+        )
+        for s in rows
+    ]
+
+
 @symbols_router.get("/search", response_model=list[SymbolSearchItem], summary="종목 검색 (10-o)")
 def search_symbols(
     q: str = Query(default="", description="종목코드 또는 종목명 검색어 (LIKE)"),

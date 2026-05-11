@@ -427,6 +427,90 @@ top_n
 
 ---
 
+## 5-s. 종목 검색 API (10-s, 06-k)
+
+### GET /api/symbols
+
+종목 검색 (기존 `/api/symbols/search` 와 별도로 쿼리 파라미터 방식 제공)
+
+쿼리:
+
+```text
+q        — 종목코드 또는 종목명 (LIKE 검색, 선택)
+market   — KOSPI | KOSDAQ | KONEX | ALL (기본 ALL)
+limit    — 기본 20, 최대 100
+```
+
+응답:
+
+```json
+[
+  {"symbol": "005930", "name": "삼성전자", "market": "KOSPI", "sector": "반도체"}
+]
+```
+
+user_id 스코프 불필요 (공개 읽기 전용).
+
+---
+
+## 5-t. 관심종목 API (10-t, 07-q)
+
+### POST /api/watchlists
+
+관심종목 그룹 생성. user_id scope 필수.
+
+요청:
+```json
+{"name": "기술주 관심종목", "description": ""}
+```
+
+응답: WatchlistOut (id, user_id, name, description, created_at, item_count)
+
+---
+
+### GET /api/watchlists
+
+내 관심종목 그룹 목록. user_id scope 필수.
+
+응답: list[WatchlistOut]
+
+---
+
+### GET /api/watchlists/{id}
+
+그룹 상세 + 종목 목록. user_id scope 필수. 다른 user 소유 시 404.
+
+응답: WatchlistDetailOut (id, name, description, created_at, items: list[WatchlistItemOut])
+
+---
+
+### POST /api/watchlists/{id}/symbols
+
+종목 추가. user_id scope 필수.
+
+요청:
+```json
+{"symbol": "005930"}
+```
+
+응답: WatchlistItemOut (id, watchlist_id, symbol, added_at)
+
+중복 추가 시 409 WATCHLIST_ITEM_ALREADY_EXISTS.
+
+---
+
+### DELETE /api/watchlists/{id}/symbols/{symbol}
+
+종목 제거. user_id scope 필수. 응답: 204 No Content.
+
+---
+
+### DELETE /api/watchlists/{id}
+
+그룹 삭제 (cascade로 items도 삭제). user_id scope 필수. 응답: 204 No Content.
+
+---
+
 ## 6. Export API
 
 ```text
@@ -493,6 +577,12 @@ MARKET_DATA_NOT_FOUND
 SYMBOL_NOT_FOUND
 UNIVERSE_EMPTY
 UNIVERSE_PREVIEW_FAILED
+```
+
+관심종목 관련:
+```text
+WATCHLIST_NOT_FOUND              (404 — 해당 id의 watchlist가 없거나 다른 user 소유)
+WATCHLIST_ITEM_ALREADY_EXISTS    (409 — 동일 그룹에 이미 추가된 종목)
 ```
 
 권한 / 인증:
