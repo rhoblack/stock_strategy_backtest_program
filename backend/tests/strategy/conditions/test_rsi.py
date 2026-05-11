@@ -91,14 +91,14 @@ def test_rsi_cross_above_detected():
     """RSI가 30을 상향 돌파하는 날이 한 번 이상 True여야 함."""
     df = _make_cross_above_df()
     result = rsi_cross(df, {"period": 14, "threshold": 30, "direction": "cross_above"})
-    assert result.any(), f"cross_above 미검출. RSI 시리즈를 확인하세요."
+    assert result.any(), "cross_above 미검출. RSI 시리즈를 확인하세요."
 
 
 def test_rsi_cross_below_detected():
     """RSI가 70을 하향 돌파하는 날이 한 번 이상 True여야 함."""
     df = _make_cross_below_df()
     result = rsi_cross(df, {"period": 14, "threshold": 70, "direction": "cross_below"})
-    assert result.any(), f"cross_below 미검출."
+    assert result.any(), "cross_below 미검출."
 
 
 def test_rsi_cross_above_false_when_already_above():
