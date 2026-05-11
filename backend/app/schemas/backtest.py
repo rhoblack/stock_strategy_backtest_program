@@ -180,7 +180,15 @@ class TradeExecutionOut(BaseModel):
 
 
 class TradeGroupOut(BaseModel):
-    """trade_group 단건 (executions 포함)."""
+    """trade_group 단건 (executions 포함).
+
+    신규 필드 (10-t, step 053):
+        entry_amount    — entry_price × entry_quantity (KRW 정수)
+        exit_quantity   — SELL 계열 수량 합계 (미청산 시 None)
+        exit_amount     — SELL 계열 net_amount 합계 KRW 정수 (미청산 시 None)
+        holding_days    — fully_closed_at(date) - entry_date (완전 청산 시만, 나머지 None)
+        signal_date     — BUY TradeExecution.signal_date (진입 신호일, None 가능)
+    """
 
     trade_group_id: int
     symbol: str
@@ -188,10 +196,15 @@ class TradeGroupOut(BaseModel):
     entry_date: str
     entry_price: int  # KRW 정수
     entry_quantity: int
+    entry_amount: int  # entry_price × entry_quantity (KRW 정수)
     remaining_quantity: int
     fully_closed_at: str | None = None
     final_profit: int | None = None  # KRW 정수
     final_profit_rate: float | None = None
+    exit_quantity: int | None = None  # SELL 수량 합계 (미청산 None)
+    exit_amount: int | None = None    # SELL net_amount 합계 KRW (미청산 None)
+    holding_days: int | None = None   # 완전 청산 시만, 나머지 None
+    signal_date: str | None = None    # BUY 신호일 (ISO date 문자열)
     executions: list[TradeExecutionOut] = []
 
 

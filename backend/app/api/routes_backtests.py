@@ -319,6 +319,49 @@ def list_trades(
             for ex in execs
         ]
 
+        # ── 신규 집계 필드 (10-t, step 053) ──────────────────────────────────
+        # entry_amount = entry_price × entry_quantity
+        entry_amount = int(tg.entry_price) * int(tg.entry_quantity)
+
+        # SELL 계열 execution 집계 (BUY 제외)
+        sell_execs = [e for e in execs if (
+            e.execution_type.value if hasattr(e.execution_type, "value") else str(e.execution_type)
+        ) != "BUY"]
+
+        exit_quantity: int | None = None
+        exit_amount: int | None = None
+        if sell_execs:
+            exit_quantity = sum(int(e.quantity) for e in sell_execs)
+            exit_amount = sum(
+                int(e.net_amount) for e in sell_execs if e.net_amount is not None
+            )
+
+        # holding_days = fully_closed_at(date) - entry_date (완전 청산 시만)
+        holding_days: int | None = None
+        if tg.fully_closed_at is not None:
+            closed_date = (
+                tg.fully_closed_at.date()
+                if hasattr(tg.fully_closed_at, "date")
+                else tg.fully_closed_at
+            )
+            holding_days = (closed_date - tg.entry_date).days
+
+        # signal_date — BUY execution의 signal_date (진입 신호일)
+        buy_exec = next(
+            (e for e in execs if (
+                e.execution_type.value if hasattr(e.execution_type, "value") else str(e.execution_type)
+            ) == "BUY"),
+            None,
+        )
+        signal_date: str | None = None
+        if buy_exec is not None and buy_exec.signal_date is not None:
+            signal_date = (
+                buy_exec.signal_date.isoformat()
+                if hasattr(buy_exec.signal_date, "isoformat")
+                else str(buy_exec.signal_date)
+            )
+        # ──────────────────────────────────────────────────────────────────────
+
         items.append(
             TradeGroupOut(
                 trade_group_id=tg.id,
@@ -327,10 +370,15 @@ def list_trades(
                 entry_date=tg.entry_date.isoformat(),
                 entry_price=int(tg.entry_price),
                 entry_quantity=int(tg.entry_quantity),
+                entry_amount=entry_amount,
                 remaining_quantity=int(tg.remaining_quantity),
                 fully_closed_at=tg.fully_closed_at.isoformat() if tg.fully_closed_at else None,
                 final_profit=int(tg.final_profit) if tg.final_profit is not None else None,
                 final_profit_rate=tg.final_profit_rate,
+                exit_quantity=exit_quantity,
+                exit_amount=exit_amount,
+                holding_days=holding_days,
+                signal_date=signal_date,
                 executions=exec_out,
             )
         )

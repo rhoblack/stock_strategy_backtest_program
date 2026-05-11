@@ -214,3 +214,91 @@ def test_trades_page_size_max_200(client):
     run = _make_run(client)
     r = client.get(f"/api/backtests/{run['id']}/trades?page_size=201")
     assert r.status_code == 422 or r.status_code == 400
+
+
+# ── 신규 컬럼 테스트 (10-t, step 053) ────────────────────────────────────────
+
+
+def test_trades_response_has_new_columns(client):
+    """응답 아이템에 entry_amount / exit_quantity / exit_amount / holding_days / signal_date 5개 필드 존재 (10-t)."""
+    run = _make_run(client)
+    r = client.get(f"/api/backtests/{run['id']}/trades")
+    assert r.status_code == 200
+    items = r.json()["items"]
+    if not items:
+        return  # 거래 없으면 skip (구조 자체는 200이면 OK)
+
+    item = items[0]
+    new_fields = ("entry_amount", "exit_quantity", "exit_amount", "holding_days", "signal_date")
+    for field in new_fields:
+        assert field in item, f"응답 아이템에 {field} 필드 누락"
+
+
+def test_entry_amount_calculation(client):
+    """entry_amount = entry_price × entry_quantity 정확성 (10-t)."""
+    run = _make_run(client)
+    r = client.get(f"/api/backtests/{run['id']}/trades")
+    assert r.status_code == 200
+    for item in r.json()["items"]:
+        expected = item["entry_price"] * item["entry_quantity"]
+        assert item["entry_amount"] == expected, (
+            f"entry_amount 불일치: {item['entry_amount']} != {expected} "
+            f"(price={item['entry_price']}, qty={item['entry_quantity']})"
+        )
+        # KRW 정수 타입 검증
+        assert isinstance(item["entry_amount"], int), "entry_amount가 int 아님"
+
+
+def test_holding_days_null_for_open_position(client):
+    """미청산 포지션(remaining_quantity > 0)은 holding_days=None (10-t).
+
+    합성 데이터(synthetic_seed=42, 90봉)에서 백테스트 종료 시점에 포지션이 열린
+    채로 끝나는 경우를 확인한다. 모든 포지션이 청산된 경우는 skip.
+    """
+    run = _make_run(client)
+    r = client.get(f"/api/backtests/{run['id']}/trades?page_size=200")
+    assert r.status_code == 200
+    items = r.json()["items"]
+
+    open_positions = [it for it in items if it["remaining_quantity"] > 0]
+    if not open_positions:
+        # 모두 청산됐으면 holding_days가 None이 아닌지 검증 (청산된 것은 int이어야 함)
+        closed_positions = [it for it in items if it["fully_closed_at"] is not None]
+        for it in closed_positions:
+            assert it["holding_days"] is not None, (
+                f"청산된 포지션의 holding_days가 None: trade_group_id={it['trade_group_id']}"
+            )
+        return  # 미청산 없으면 나머지 검증 불필요
+
+    for it in open_positions:
+        assert it["holding_days"] is None, (
+            f"미청산 포지션의 holding_days가 None이 아님: "
+            f"trade_group_id={it['trade_group_id']}, holding_days={it['holding_days']}"
+        )
+
+
+def test_signal_date_present(client):
+    """SELL(청산)이 있는 거래 그룹에 signal_date 필드가 포함된다 (10-t).
+
+    signal_date는 진입 신호일로 BUY TradeExecution에서 가져온다.
+    값이 있으면 ISO 날짜 문자열(YYYY-MM-DD)이어야 한다.
+    """
+    run = _make_run(client)
+    r = client.get(f"/api/backtests/{run['id']}/trades?page_size=200")
+    assert r.status_code == 200
+    items = r.json()["items"]
+
+    for item in items:
+        # signal_date 필드가 반드시 존재해야 함 (None도 허용)
+        assert "signal_date" in item, f"signal_date 필드 누락: {item['trade_group_id']}"
+        sd = item["signal_date"]
+        if sd is not None:
+            # ISO 날짜 형식 검증
+            from datetime import date as _date
+            try:
+                _date.fromisoformat(sd)
+            except ValueError:
+                raise AssertionError(
+                    f"signal_date가 ISO 날짜 형식이 아님: {sd!r} "
+                    f"(trade_group_id={item['trade_group_id']})"
+                ) from None

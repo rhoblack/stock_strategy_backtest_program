@@ -293,9 +293,15 @@ sort                 (entry_date_desc | profit_rate_desc | profit_desc 등)
       "entry_date": "2024-03-12",
       "entry_price": 72000,
       "entry_quantity": 13,
+      "entry_amount": 936000,
+      "remaining_quantity": 0,
       "fully_closed_at": "2024-04-05",
       "final_profit": 80600,
       "final_profit_rate": 8.61,
+      "exit_quantity": 13,
+      "exit_amount": 1016600,
+      "holding_days": 24,
+      "signal_date": "2024-03-11",
       "executions": [
         { "execution_date": "2024-04-05", "execution_type": "SELL", "quantity": 13, "exit_reason": "take_profit" }
       ]
@@ -306,6 +312,16 @@ sort                 (entry_date_desc | profit_rate_desc | profit_desc 등)
   "total_count": 312
 }
 ```
+
+필드 설명 (10-t, step 053):
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `entry_amount` | `int` | `entry_price × entry_quantity` (매수 총 비용, KRW 정수) |
+| `exit_quantity` | `int \| null` | SELL 계열 trade_executions 수량 합계. 미청산 시 null |
+| `exit_amount` | `int \| null` | SELL 계열 trade_executions net_amount 합계 (KRW 정수). 미청산 시 null |
+| `holding_days` | `int \| null` | `fully_closed_at(date) − entry_date` (완전 청산 시). 부분 청산/미청산 시 null |
+| `signal_date` | `str \| null` | BUY TradeExecution.signal_date (진입 신호일). null 가능 |
 
 ---
 
