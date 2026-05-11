@@ -1,0 +1,30 @@
+{
+  "_description": "golden_05: 부분 매도 + cash_shortage_rule lowest_return. samsung_5y_prices.csv 기반. 12번 §15.5 golden_03 시나리오.",
+  "entry": {
+    "logic": "AND",
+    "conditions": [
+      {
+        "type": "price_vs_ma",
+        "ma_period": 20,
+        "operator": ">"
+      }
+    ]
+  },
+  "exit_position": {
+    "logic": "OR",
+    "conditions": [
+      {
+        "type": "take_profit",
+        "percent": 8.0
+      },
+      {
+        "type": "stop_loss",
+        "percent": 4.0
+      },
+      {
+        "type": "max_holding_days",
+        "days": 30
+      }
+    ]
+  }
+}

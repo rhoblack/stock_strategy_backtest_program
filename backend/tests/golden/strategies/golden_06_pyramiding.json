@@ -1,0 +1,30 @@
+{
+  "_description": "golden_06: allow_pyramiding=true + weighted_average. samsung_5y_prices.csv 기반. 12번 §15.5 golden_04 시나리오.",
+  "entry": {
+    "logic": "AND",
+    "conditions": [
+      {
+        "type": "price_vs_ma",
+        "ma_period": 5,
+        "operator": ">"
+      }
+    ]
+  },
+  "exit_position": {
+    "logic": "OR",
+    "conditions": [
+      {
+        "type": "take_profit",
+        "percent": 5.0
+      },
+      {
+        "type": "stop_loss",
+        "percent": 3.0
+      },
+      {
+        "type": "max_holding_days",
+        "days": 20
+      }
+    ]
+  }
+}
