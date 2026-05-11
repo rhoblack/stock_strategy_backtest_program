@@ -66,7 +66,16 @@ describe("BacktestRunPage", () => {
     expect(screen.getByRole("button", { name: /백테스트 실행/ })).toBeDisabled();
   });
 
-  it("전략 선택 → 실행 → mutate 호출 + redirect", async () => {
+  it("UniverseSelector가 렌더링됨 (합성 데이터 UI 없음)", () => {
+    renderPage();
+    // UniverseSelector 렌더링 확인
+    expect(screen.getByTestId("universe-selector")).toBeInTheDocument();
+    // synthetic 관련 UI가 없는지 확인
+    expect(screen.queryByText(/합성 데이터/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/synthetic/i)).not.toBeInTheDocument();
+  });
+
+  it("전략 선택 → 실행 → universe_config에 market 포함 + redirect", async () => {
     renderPage();
     fireEvent.change(screen.getByLabelText("전략 선택"), { target: { value: "1" } });
     fireEvent.click(screen.getByRole("button", { name: /백테스트 실행/ }));
@@ -74,7 +83,10 @@ describe("BacktestRunPage", () => {
     await waitFor(() => expect(mutate).toHaveBeenCalled());
     const payload = mutate.mock.calls[0][0];
     expect(payload.strategy_id).toBe(1);
-    expect(payload.universe_config.synthetic_seed).toBe(42);
+    // universe_config는 UniverseSelector에서 받은 값 (synthetic_seed 없음)
+    expect(payload.universe_config).toBeDefined();
+    expect(payload.universe_config.market).toBeDefined();
+    expect(payload.universe_config.synthetic_seed).toBeUndefined();
 
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/backtests/999"));
   });

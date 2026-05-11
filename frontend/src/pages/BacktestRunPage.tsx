@@ -9,7 +9,7 @@ import UniverseSelector, {
 
 /**
  * 백테스트 실행 화면 — 전략 선택 + 설정 입력 + 실행 → 결과 페이지로 redirect.
- * dev 모드는 합성 데이터 (synthetic_seed/synthetic_n).
+ * UniverseSelector(019)를 통해 실제 시장 종목을 대상으로 실행합니다.
  */
 export default function BacktestRunPage() {
   const [params] = useSearchParams();
@@ -29,12 +29,7 @@ export default function BacktestRunPage() {
   const [feeRate, setFeeRate] = useState(0.00015);
   const [taxRate, setTaxRate] = useState(0.0018);
   const [slippage, setSlippage] = useState(0.001);
-  const [syntheticSeed, setSyntheticSeed] = useState(42);
-  const [syntheticN, setSyntheticN] = useState(90);
   const [positionSize, setPositionSize] = useState(5_000_000);
-  // 033 / 11-h: UniverseSelector config — 019 백엔드 활용.
-  // dev 모드는 합성 데이터 사용 (universe_config.symbol="GOLDEN") → 토글로 전환.
-  const [useSynthetic, setUseSynthetic] = useState(true);
   const [universeConfig, setUniverseConfig] = useState<UniverseConfig>(
     DEFAULT_UNIVERSE_CONFIG,
   );
@@ -43,24 +38,14 @@ export default function BacktestRunPage() {
 
   const onRun = () => {
     if (!canRun) return;
-    // dev 모드 (합성)와 UniverseSelector(019) 분기.
-    const universePayload: Record<string, unknown> = useSynthetic
-      ? {
-          symbol: "GOLDEN",
-          position_size_amount: positionSize,
-          synthetic_seed: syntheticSeed,
-          synthetic_n: syntheticN,
-        }
-      : {
-          position_size_amount: positionSize,
-          ...universeConfigToPayload(universeConfig),
-        };
-
     createMutation.mutate(
       {
         strategy_id: Number(strategyId),
         run_name: runName,
-        universe_config: universePayload,
+        universe_config: {
+          position_size_amount: positionSize,
+          ...universeConfigToPayload(universeConfig),
+        },
         start_date: startDate,
         end_date: endDate,
         initial_cash: initialCash,
@@ -85,9 +70,6 @@ export default function BacktestRunPage() {
         </Link>
       </p>
       <h1 style={{ fontSize: 18, fontWeight: 600 }}>백테스트 실행</h1>
-      <p style={{ fontSize: 12, color: "#9ca3af" }}>
-        Phase 14 데이터 파이프라인 미구현 — dev 모드는 합성 시계열로 실행합니다.
-      </p>
 
       <form
         onSubmit={(e) => {
@@ -164,41 +146,7 @@ export default function BacktestRunPage() {
           />
         </Field>
 
-        <Field label="유니버스 모드">
-          <select
-            aria-label="유니버스 모드"
-            data-testid="universe-mode"
-            value={useSynthetic ? "synthetic" : "real"}
-            onChange={(e) => setUseSynthetic(e.target.value === "synthetic")}
-          >
-            <option value="synthetic">합성 데이터 (dev)</option>
-            <option value="real">실제 시장 (UniverseSelector)</option>
-          </select>
-        </Field>
-
-        {useSynthetic ? (
-          <fieldset
-            style={{ border: "1px solid #e5e7eb", padding: 12, borderRadius: 6 }}
-          >
-            <legend style={{ fontSize: 12, color: "#6b7280" }}>합성 데이터 (dev)</legend>
-            <Field label="seed">
-              <input
-                type="number"
-                value={syntheticSeed}
-                onChange={(e) => setSyntheticSeed(Number(e.target.value))}
-              />
-            </Field>
-            <Field label="일수 N">
-              <input
-                type="number"
-                value={syntheticN}
-                onChange={(e) => setSyntheticN(Number(e.target.value))}
-              />
-            </Field>
-          </fieldset>
-        ) : (
-          <UniverseSelector value={universeConfig} onChange={setUniverseConfig} />
-        )}
+        <UniverseSelector value={universeConfig} onChange={setUniverseConfig} />
 
         <button
           type="submit"

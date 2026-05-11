@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
-import { useStrategies } from "../api/strategies";
+import { useStrategies, type StrategyLastBacktest } from "../api/strategies";
 
 /**
- * 전략 목록 페이지 — useStrategies + 백테스트 실행 링크.
+ * 전략 목록 페이지 — useStrategies + 백테스트 실행 링크 + last_backtest 표시.
  */
 export default function StrategyListPage() {
   const { data, isLoading, error } = useStrategies();
@@ -68,15 +68,20 @@ export default function StrategyListPage() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
+                gap: 12,
               }}
             >
-              <div>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{s.name}</div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>
                   {s.tags.join(", ") || "태그 없음"}
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+
+              {/* last_backtest 정보 */}
+              <LastBacktestBadge lastBacktest={s.last_backtest} />
+
+              <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                 <Link to={`/backtests/new?strategy_id=${s.id}`} style={btn}>
                   백테스트 실행
                 </Link>
@@ -89,6 +94,52 @@ export default function StrategyListPage() {
   );
 }
 
+/** 마지막 백테스트 정보 뱃지 — API가 반환하지 않으면 "-" 표시 */
+function LastBacktestBadge({
+  lastBacktest,
+}: {
+  lastBacktest: StrategyLastBacktest | null | undefined;
+}) {
+  if (!lastBacktest) {
+    return (
+      <div style={badgeContainerStyle} data-testid="last-backtest-empty">
+        <span style={{ fontSize: 11, color: "#9ca3af" }}>최근 백테스트 없음</span>
+      </div>
+    );
+  }
+
+  const returnPct = lastBacktest.total_return;
+  const returnColor = returnPct >= 0 ? "#16a34a" : "#dc2626";
+  const returnLabel = returnPct >= 0 ? `+${returnPct.toFixed(1)}%` : `${returnPct.toFixed(1)}%`;
+  const dateLabel = lastBacktest.run_date
+    ? formatDate(lastBacktest.run_date)
+    : null;
+
+  return (
+    <div style={badgeContainerStyle} data-testid="last-backtest-badge">
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {dateLabel && (
+          <span style={{ fontSize: 11, color: "#6b7280" }}>{dateLabel}</span>
+        )}
+        <span
+          data-testid="last-backtest-return"
+          style={{ fontSize: 13, fontWeight: 600, color: returnColor }}
+        >
+          {returnLabel}
+        </span>
+        <span style={{ fontSize: 11, color: "#9ca3af" }}>
+          MDD {lastBacktest.mdd.toFixed(1)}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** "2026-05-11" → "2026.05.11" */
+function formatDate(iso: string): string {
+  return iso.slice(0, 10).replace(/-/g, ".");
+}
+
 const btn: React.CSSProperties = {
   padding: "4px 10px",
   border: "1px solid #d1d5db",
@@ -96,4 +147,11 @@ const btn: React.CSSProperties = {
   textDecoration: "none",
   color: "#1f2937",
   fontSize: 12,
+};
+
+const badgeContainerStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  minWidth: 140,
 };

@@ -5,6 +5,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 
+export type StrategyLastBacktest = {
+  total_return: number;
+  mdd: number;
+  win_rate: number;
+  /** 백테스트 실행일 (ISO 날짜 문자열, 옵셔널) */
+  run_date?: string | null;
+};
+
 export type StrategyOut = {
   id: number;
   user_id: number;
@@ -16,6 +24,8 @@ export type StrategyOut = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  /** API가 반환하지 않으면 undefined — graceful 처리 */
+  last_backtest?: StrategyLastBacktest | null;
 };
 
 export type StrategyCreatePayload = {
