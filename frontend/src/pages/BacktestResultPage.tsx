@@ -23,6 +23,7 @@ import TradesTable, {
 } from "../features/backtest-result/components/TradesTable";
 import { DrawdownChart, CashChart, PositionsCountChart, VolumeChart, BenchmarkCompareChart } from "../components/charts";
 import { SummaryCard as Card } from "../components/ui";
+import MonthlyReturnChart, { type MonthlyReturn } from "../features/backtest-result/components/MonthlyReturnChart";
 
 /**
  * 백테스트 결과 페이지 — 08번 §3·§4 정합 6 탭 구조.
@@ -332,7 +333,7 @@ function MonthlySection({
   equityItems: ReturnType<typeof useDailyEquity>["data"] extends infer T ? T extends { items: infer U } ? U : never : never;
 }) {
   // 월별 수익률: 각 월 마지막 day의 total_equity를 비교
-  const monthly = useMemo(() => {
+  const monthly = useMemo<MonthlyReturn[]>(() => {
     if (equityItems.length === 0) return [];
     const sorted = [...equityItems].sort((a, b) => a.date.localeCompare(b.date));
     const byMonth = new Map<string, { last: number; date: string }>();
@@ -349,42 +350,65 @@ function MonthlySection({
     });
   }, [equityItems]);
 
-  if (monthly.length === 0) {
-    return <p style={{ fontSize: 13, color: "#6b7280" }}>월별 성과 데이터가 없습니다.</p>;
-  }
-
   return (
     <section aria-label="월별 성과">
       <h2 style={{ fontSize: 15, fontWeight: 600 }}>월별 성과</h2>
-      <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse", maxWidth: 600 }}>
-        <thead>
-          <tr style={{ background: "#f9fafb" }}>
-            <th style={th}>월</th>
-            <th style={th}>월말 자산</th>
-            <th style={th}>월간 수익률</th>
-          </tr>
-        </thead>
-        <tbody>
-          {monthly.map((m) => (
-            <tr key={m.ym} style={{ borderTop: "1px solid #f3f4f6" }}>
-              <td style={td}>{m.ym}</td>
-              <td style={tdNum}>{Math.round(m.lastEquity).toLocaleString()}원</td>
-              <td
-                style={{
-                  ...tdNum,
-                  color: m.returnPct >= 0 ? "#dc2626" : "#1d4ed8",
-                }}
-              >
-                {m.returnPct >= 0 ? "+" : ""}
-                {m.returnPct.toFixed(2)}%
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, marginBottom: 12 }}>
+        양수(초록) = 수익, 음수(빨강) = 손실 / 막대 위 오버에서 상세 정보 확인
+      </p>
+      {/* 막대 차트 (08번 §4, 양수=초록/음수=빨강) */}
+      <MonthlyReturnChart data={monthly} />
+
+      {/* 하단 테이블 — 수치 확인용 */}
+      {monthly.length > 0 && (
+        <details style={{ marginTop: 16 }}>
+          <summary style={{ fontSize: 12, color: "#6b7280", cursor: "pointer" }}>
+            월별 수치 테이블 펼치기
+          </summary>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse", maxWidth: 600, marginTop: 8 }}>
+            <thead>
+              <tr style={{ background: "#f9fafb" }}>
+                <th style={th}>월</th>
+                <th style={th}>월말 자산</th>
+                <th style={th}>월간 수익률</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthly.map((m) => (
+                <tr key={m.ym} style={{ borderTop: "1px solid #f3f4f6" }}>
+                  <td style={td}>{m.ym}</td>
+                  <td style={tdNum}>{Math.round(m.lastEquity).toLocaleString()}원</td>
+                  <td
+                    style={{
+                      ...tdNum,
+                      color: m.returnPct >= 0 ? "#16a34a" : "#dc2626",
+                    }}
+                  >
+                    {m.returnPct >= 0 ? "+" : ""}
+                    {m.returnPct.toFixed(2)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
     </section>
   );
 }
+
+/**
+ * 리스크 지표 설명 매핑.
+ * sharpe_ratio, volatility는 현재 API 미지원 → "-" 표시 (graceful).
+ */
+const RISK_METRIC_DESC: Record<string, string> = {
+  mdd: "최대 낙폭: 고점 대비 최대 하락 비율",
+  avg_profit: "평균 수익 거래: 수익 난 거래의 평균 수익률",
+  avg_loss: "평균 손실 거래: 손실 난 거래의 평균 손실률",
+  profit_factor: "Profit Factor: 총이익 / 총손실 (1 이상이면 수익)",
+  sharpe: "Sharpe Ratio: 위험 대비 수익 (API 미지원)",
+  volatility: "변동성(연율화): 일 수익률 표준편차 × √252 (API 미지원)",
+};
 
 function RiskSection({
   chartData,
@@ -396,15 +420,48 @@ function RiskSection({
   return (
     <>
       {summary && (
-        <section aria-label="리스크 지표" style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(4, 1fr)" }}>
-          <Card label="최대 낙폭 (MDD)" value={`${summary.mdd_pct.toFixed(2)}%`} />
-          <Card label="평균 수익 거래" value={`${summary.avg_profit_pct.toFixed(2)}%`} />
-          <Card label="평균 손실 거래" value={`-${summary.avg_loss_pct.toFixed(2)}%`} />
-          <Card
-            label="Profit Factor"
-            value={summary.profit_factor === null ? "—" : summary.profit_factor.toFixed(2)}
-          />
-        </section>
+        <>
+          <section aria-label="리스크 지표" style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(3, 1fr)" }}>
+            <RiskCard
+              label="최대 낙폭 (MDD)"
+              value={`${summary.mdd_pct.toFixed(2)}%`}
+              desc={RISK_METRIC_DESC.mdd}
+              negative
+            />
+            <RiskCard
+              label="평균 수익 거래"
+              value={`+${summary.avg_profit_pct.toFixed(2)}%`}
+              desc={RISK_METRIC_DESC.avg_profit}
+              positive
+            />
+            <RiskCard
+              label="평균 손실 거래"
+              value={`-${summary.avg_loss_pct.toFixed(2)}%`}
+              desc={RISK_METRIC_DESC.avg_loss}
+              negative
+            />
+          </section>
+          <section aria-label="리스크 지표 2" style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(3, 1fr)", marginTop: 8 }}>
+            <RiskCard
+              label="Profit Factor"
+              value={summary.profit_factor === null ? "—" : summary.profit_factor.toFixed(2)}
+              desc={RISK_METRIC_DESC.profit_factor}
+            />
+            {/* sharpe_ratio, volatility는 현재 API 미지원 → graceful "-" 표시 */}
+            <RiskCard
+              label="Sharpe Ratio"
+              value="—"
+              desc={RISK_METRIC_DESC.sharpe}
+              unavailable
+            />
+            <RiskCard
+              label="연율화 변동성"
+              value="—"
+              desc={RISK_METRIC_DESC.volatility}
+              unavailable
+            />
+          </section>
+        </>
       )}
 
       {chartData && chartData.equity_curve.length > 0 ? (
@@ -416,6 +473,50 @@ function RiskSection({
         <p style={{ fontSize: 13, color: "#6b7280", marginTop: 16 }}>MDD 데이터가 없습니다.</p>
       )}
     </>
+  );
+}
+
+/** 리스크 지표 카드: 값 + 설명 tooltip */
+function RiskCard({
+  label,
+  value,
+  desc,
+  positive,
+  negative,
+  unavailable,
+}: {
+  label: string;
+  value: string;
+  desc: string;
+  positive?: boolean;
+  negative?: boolean;
+  unavailable?: boolean;
+}) {
+  const color = unavailable
+    ? "#9ca3af"
+    : positive
+      ? "#16a34a"
+      : negative
+        ? "#dc2626"
+        : "#1f2937";
+
+  return (
+    <div
+      data-testid="risk-card"
+      title={desc}
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 6,
+        padding: "12px 16px",
+        background: unavailable ? "#f9fafb" : "white",
+      }}
+    >
+      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color }}>{value}</div>
+      {unavailable && (
+        <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>API 미지원</div>
+      )}
+    </div>
   );
 }
 
