@@ -58,9 +58,9 @@
 | 15 | PositionSizer 확장 + buy_skipped_cash_shortage event + trade_group 단위 익절/손절 — test-engineer 🟢 ship-go | ✅ 완료 (3 step) |
 | 16 | 데이터 파이프라인 완성 + 시장데이터 API (HistoricalBackfillJob / DailyUpdateJob / PykrxProvider / 종목검색 API + watchlists CRUD) — test-engineer 🟢 ship-go | ✅ 완료 (4 step) |
 | 17 | Export + API 잔존 완성 (trades.csv 컬럼 정합화 + ZIP 파일명 + trades API 응답 동기화) — test-engineer 🟢 ship-go | ✅ 완료 (2/2 step, 🟢 ship-go) |
-| 18 | 프론트엔드 UI 잔존 완성 (공통 컴포넌트 + BacktestRunPage + StrategyComparePage + 백테스트 결과 UI) | 🔄 모든 step 완료 (4/4), test-engineer 검증 대기 |
+| 18 | 프론트엔드 UI 잔존 완성 (공통 컴포넌트 + BacktestRunPage + StrategyComparePage + 백테스트 결과 UI) | ✅ 완료 (4/4 step, 🟢 ship-go) |
 
-**현재 작업 중**: 없음. **Phase 18 모든 step 완료 (054~057), test-engineer 검증 대기** (249 PASS / 0 FAIL / 08-n·08-o·08-p 해소 / 08번 100% ✅ / 11번 100% ✅). 다음 단계는 test-engineer Phase 18 완료 검증 → ship-go 후 Phase 19 (테스트 완성 + E2E, step 058~059).
+**현재 작업 중**: 없음. **Phase 18 완료 (🟢 ship-go)** — 249 vitest PASS / 1360 pytest PASS / 08번 100% ✅ / 11번 100% ✅ / UI 카테고리 100% ✅. 다음 단계는 Phase 19 (테스트 완성 + E2E, step 058~059) — data_pipeline 통합 테스트 + 프론트 E2E (Playwright).
 
 > 위 Phase 1~7 표는 **자체 정의한 step 기준** 완료 표시입니다. **상세설계서 14개 문서 기준으로는 데모 수준**이며 핵심 미구현 다수가 있습니다.
 > 상세 비교는 [`리뷰/2026-05-10-010-외부코드리뷰.md`](../리뷰/2026-05-10-010-외부코드리뷰.md) 참조 (외부 리뷰 + 메인 세션 검증 완료).
@@ -97,6 +97,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [058-data-pipeline-integration-tests](./2026-05-11-058-data-pipeline-integration-tests.md) | 19 | backtest-engine-developer | ✅ | data_pipeline 통합 테스트 19건 (12-j) — BackfillCheckpoint/DailyUpdate/PykrxProvider/AdjustedPrice/RateLimiter/Scheduler — 1379 PASS |
 | 2026-05-11 | [057-backtest-result-ui-remaining](./2026-05-11-057-backtest-result-ui-remaining.md) | 18 | frontend-developer | ✅ | **Phase 18 마지막 step**: 월별 차트 + 리스크/자금 탭 실데이터 + 봉차트 툴팁 (08-n·o·p) — 249 PASS |
 | 2026-05-11 | [056-strategy-compare-page](./2026-05-11-056-strategy-compare-page.md) | 18 | frontend-developer | ✅ | StrategyComparePage 실 비교 기능 + TanStack Table 전략 목록 (11-i·11-j) — 236 PASS |
 | 2026-05-11 | [055-backtest-run-page-and-strategy-list](./2026-05-11-055-backtest-run-page-and-strategy-list.md) | 18 | frontend-developer | ✅ | BacktestRunPage synthetic 제거 + UniverseSelector 연결 + last_backtest 뱃지 (11-k·11-l) — 227 PASS |
@@ -325,6 +326,19 @@ Phase 16 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" �
 - ✅ test-engineer 검증: 1360 PASS / 0 FAIL / ruff All checks passed / 골든 9지표 frozen 유지 / 09-h·09-m·10-t acceptance 전 항목 통과 / 하위 호환 확인 (기존 TradeGroupOut 필드 유지)
 
 Phase 17 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
+
+---
+
+## Phase 18 완료 ✅ (4/4 step, test-engineer 🟢 ship-go)
+
+### 완료 step
+- ✅ 054 공통 UI 컴포넌트 정비 (Button/Input/Card/Tabs) + 차트 컴포넌트 분리 (DrawdownChart/VolumeChart/CashChart/BenchmarkCompareChart) (11-m·11-n, 218 PASS)
+- ✅ 055 BacktestRunPage synthetic 제거 + 실 UniverseSelector 연결 + 전략 목록 last_backtest 표시 (11-k·11-l, 227 PASS)
+- ✅ 056 StrategyComparePage 실 비교 기능 + TanStack Table 전략 목록 (11-i·11-j, 236 PASS) — 11번 100% ✅
+- ✅ 057 월별 차트 + 리스크/자금 탭 실데이터 + 봉차트 툴팁 (08-n·08-o·08-p, 249 PASS) — 08번 100% ✅
+- ✅ test-engineer 검증: 249 vitest PASS / 1360 pytest PASS / ruff All checks passed / 골든 9지표 frozen 유지 / UI 정책(08번 §7·§8·§9) 코드 검증 통과 / **UI 카테고리 100%** ✅
+
+Phase 18 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 
 ---
 
