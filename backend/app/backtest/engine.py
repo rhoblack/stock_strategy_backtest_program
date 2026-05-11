@@ -744,6 +744,79 @@ class BacktestEngine:
                 key=lambda c: (-float(c[1]["market_cap"]), c[0]),
             )
 
+        if method == "market_cap_asc":
+            # 시가총액 오름차순 (소형주 우선) + symbol ASC tie-breaker (02번 §7).
+            # market_cap 컬럼이 없거나 NaN인 후보는 제외 (look-ahead 안전 + 결정론).
+            with_cap: list[tuple[str, pd.Series]] = []
+            for symbol, row in candidates:
+                if "market_cap" not in row.index:
+                    continue
+                cap = row["market_cap"]
+                if pd.isna(cap):
+                    continue
+                with_cap.append((symbol, row))
+            return sorted(
+                with_cap,
+                key=lambda c: (float(c[1]["market_cap"]), c[0]),  # 오름차순
+            )
+
+        if method == "volume_ratio_desc":
+            # 거래량 급증 비율 내림차순 (02번 §7).
+            # volume_ratio = adj_volume / avg_volume (컬럼명: volume_ratio 또는 직접 계산).
+            # avg_volume 컬럼이 있으면 adj_volume / avg_volume으로 계산.
+            # avg_volume이 없으면 adj_volume만으로 내림차순 (단일 봉 대용, look-ahead 안전).
+            # 결손/0인 후보는 제외 (결정론 — NaN 순서는 구현체마다 다를 수 있음).
+            scored: list[tuple[str, pd.Series]] = []
+            for symbol, row in candidates:
+                adj_vol = row.get("adj_volume")
+                if adj_vol is None or pd.isna(adj_vol) or adj_vol == 0:
+                    continue
+                if "avg_volume" in row.index:
+                    avg_vol = row["avg_volume"]
+                    if pd.isna(avg_vol) or avg_vol == 0:
+                        continue
+                    ratio = float(adj_vol) / float(avg_vol)
+                elif "volume_ratio" in row.index:
+                    vr = row["volume_ratio"]
+                    if pd.isna(vr):
+                        continue
+                    ratio = float(vr)
+                else:
+                    # avg_volume 컬럼 없음 — adj_volume 자체를 점수로 사용 (fallback)
+                    ratio = float(adj_vol)
+                scored.append((symbol, row, ratio))
+            return [
+                (symbol, row)
+                for symbol, row, _ in sorted(
+                    scored,
+                    key=lambda c: (-c[2], c[0]),  # ratio 내림차순 + symbol ASC
+                )
+            ]
+
+        if method == "price_change_desc":
+            # 당일 등락률 내림차순 (02번 §7).
+            # price_change_pct = (adj_close - prev_close) / prev_close × 100.
+            # prev_close 컬럼이 없거나 0/NaN인 후보는 제외 (첫 봉 보수 처리).
+            scored_pc: list[tuple[str, pd.Series, float]] = []
+            for symbol, row in candidates:
+                if "prev_close" not in row.index:
+                    continue
+                prev_close = row["prev_close"]
+                if pd.isna(prev_close) or float(prev_close) == 0:
+                    continue
+                adj_close = row.get("adj_close")
+                if adj_close is None or pd.isna(adj_close):
+                    continue
+                pct = (float(adj_close) - float(prev_close)) / float(prev_close) * 100
+                scored_pc.append((symbol, row, pct))
+            return [
+                (symbol, row)
+                for symbol, row, _ in sorted(
+                    scored_pc,
+                    key=lambda c: (-c[2], c[0]),  # pct 내림차순 + symbol ASC
+                )
+            ]
+
         if method == "random":
             # rng는 __init__에서 random_seed로 초기화. None이면 config가 이미
             # __post_init__에서 ValueError를 냈으므로 도달 불가지만 방어적 가드.

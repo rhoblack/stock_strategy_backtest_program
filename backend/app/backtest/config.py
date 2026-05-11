@@ -31,6 +31,9 @@ SUPPORTED_PRIORITY_METHODS: frozenset[str] = frozenset(
         "none",                # 020 호환 — symbol ASC만
         "trading_value_desc",  # 13.8.3 — 후보의 today close × volume 내림차순
         "market_cap_desc",     # 13.8.3 — 후보의 today market_cap 내림차순
+        "market_cap_asc",      # 02번 §7 — 시가총액 작은 순 (소형주 우선)
+        "volume_ratio_desc",   # 02번 §7 — 거래량 급증 비율 큰 순 (adj_volume / avg_volume)
+        "price_change_desc",   # 02번 §7 — 당일 등락률 큰 순 ((close - prev_close) / prev_close)
         "random",              # 13.8.3 — random.Random(seed) 셔플
     }
 )
