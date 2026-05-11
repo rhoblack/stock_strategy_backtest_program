@@ -21,11 +21,8 @@ import SymbolSelector, {
 import TradesTable, {
   type TradeRowClickInfo,
 } from "../features/backtest-result/components/TradesTable";
-import DrawdownChart from "../components/charts/DrawdownChart";
-import CashChart from "../components/charts/CashChart";
-import PositionsCountChart from "../components/charts/PositionsCountChart";
-import VolumeChart from "../components/charts/VolumeChart";
-import BenchmarkCompareChart from "../components/charts/BenchmarkCompareChart";
+import { DrawdownChart, CashChart, PositionsCountChart, VolumeChart, BenchmarkCompareChart } from "../components/charts";
+import { SummaryCard as Card } from "../components/ui";
 
 /**
  * 백테스트 결과 페이지 — 08번 §3·§4 정합 6 탭 구조.
@@ -484,22 +481,6 @@ const dlBtn: React.CSSProperties = {
   fontSize: 12,
   background: "white",
 };
-
-function Card({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        padding: 12,
-        border: "1px solid #e5e7eb",
-        borderRadius: 6,
-        background: "white",
-      }}
-    >
-      <div style={{ fontSize: 11, color: "#6b7280" }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{value}</div>
-    </div>
-  );
-}
 
 // RESULT_TABS export — 다른 곳에서 라벨 표시용 (필요 시)
 export { RESULT_TABS };

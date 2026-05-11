@@ -96,6 +96,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [054-common-ui-components-and-charts](./2026-05-11-054-common-ui-components-and-charts.md) | 18 | frontend-developer | ✅ | Button/Input/Card/Tabs 공통 컴포넌트 + 차트 분리 (11-m·11-n) — 218 PASS |
 | 2026-05-11 | [053-trades-api-column-sync](./2026-05-11-053-trades-api-column-sync.md) | 17 | backend-api-engineer | ✅ | **Phase 17 마지막 step**: trades API 응답 컬럼 동기화 (10-t) — 1360 PASS |
 | 2026-05-11 | [052-csv-export-column-fix](./2026-05-11-052-csv-export-column-fix.md) | 17 | backend-api-engineer | ✅ | trades.csv 컬럼 정합화 (09-h) + ZIP 파일명 형식 (09-m) — 1356 PASS |
 | 2026-05-11 | [051-symbol-search-watchlist-api](./2026-05-11-051-symbol-search-watchlist-api.md) | 16 | backend-api-engineer | ✅ | **Phase 16 마지막 step**: 종목 검색 API + watchlists CRUD (06-k·10-s·07-q) — 1330 PASS |
