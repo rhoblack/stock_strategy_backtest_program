@@ -28,8 +28,10 @@ from app.strategy.registry import condition_registry
 ALL_DEFINITIONS: dict[str, dict] = {
     _moving_average.PRICE_VS_MA_META["type"]: _moving_average.PRICE_VS_MA_META,
     _moving_average.MA_CROSS_META["type"]: _moving_average.MA_CROSS_META,
+    _moving_average.MA_ALIGNMENT_META["type"]: _moving_average.MA_ALIGNMENT_META,
     _volume.VOLUME_RATIO_META["type"]: _volume.VOLUME_RATIO_META,
     _rsi.RSI_LEVEL_META["type"]: _rsi.RSI_LEVEL_META,
+    _rsi.RSI_CROSS_META["type"]: _rsi.RSI_CROSS_META,
     _trading_value.AVG_TRADING_VALUE_META["type"]: _trading_value.AVG_TRADING_VALUE_META,
     _trading_value.MARKET_INDEX_FILTER_META["type"]: _trading_value.MARKET_INDEX_FILTER_META,
     _macd.MACD_CROSS_META["type"]: _macd.MACD_CROSS_META,

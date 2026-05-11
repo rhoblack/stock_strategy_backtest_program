@@ -8,16 +8,17 @@ Create Date: 2026-05-11 09:47:29.081444
 watchlists (user_id FK → users.id) + watchlist_items (watchlist_id FK → watchlists.id) 추가.
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "33e7279ce17c"
-down_revision: Union[str, Sequence[str], None] = "d9f3b2a7e041"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "d9f3b2a7e041"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

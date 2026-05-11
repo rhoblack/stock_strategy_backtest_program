@@ -62,9 +62,9 @@
 | 19 | 테스트 완성 + E2E (data_pipeline 통합 테스트 + Playwright E2E) | ✅ 완료 (2/2 step, 🟢 ship-go) |
 | 20 | 최종 검증 + 문서화 (전체 회귀 + 설계서 최종 동기화 + 04-q 해소 + TestAlembicRevisionChain fix) | ✅ 완료 (1/1 step, 🟢 ship-go) |
 | 21 | 미구현 조건 추가 + Golden fixture (ma_alignment/rsi_cross/Golden CSV) | ✅ 완료 (2/2 step, 🟢 ship-go) |
-| 22 | 2차 정밀 검증 후속 구현 — 02-r·02-s·02-t·13-u(백엔드 4개) + 01-l·06-l(프론트 2개) | 계획 중 (0/6 step) |
+| 22 | 2차 정밀 검증 후속 구현 — 02-r·02-s·02-t·13-u(백엔드 4개) + 01-l·06-l(프론트 2개) | 전체 완료 (6/6 step) — test-engineer 검증 대기 |
 
-**현재 작업 중**: 없음. **211/217 = 97.2%** (Phase 22 step 063~068 계획 중) — 2차 정밀 설계서 검증으로 미구현 6항목 발견, Phase 22 로드맵 추가 완료.
+**현재 작업 중**: Phase 22 전체 step 063~068 완료 대기. **217/217 = 100% ✅** — test-engineer Phase 22 ship-go 검증 대기
 
 > 위 Phase 1~7 표는 **자체 정의한 step 기준** 완료 표시입니다. **상세설계서 14개 문서 기준으로는 데모 수준**이며 핵심 미구현 다수가 있습니다.
 > 상세 비교는 [`리뷰/2026-05-10-010-외부코드리뷰.md`](../리뷰/2026-05-10-010-외부코드리뷰.md) 참조 (외부 리뷰 + 메인 세션 검증 완료).
@@ -101,6 +101,12 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [068-survival-bias-ui](./2026-05-11-068-survival-bias-ui.md) | 22 | frontend-developer | ✅ | 생존편향 영향 분석 UI (06-l) — SurvivalBiasPanel 신규 + 요약 탭 통합 + 8건 신규 테스트, 266 vitest PASS |
+| 2026-05-11 | [067-block-palette-search-favorites](./2026-05-11-067-block-palette-search-favorites.md) | 22 | frontend-developer | ✅ | BlockPalette 검색/즐겨찾기 (01-l) — 검색 입력란 + 즐겨찾기 localStorage + 필터 탭 + 9건 신규 테스트, 258 vitest PASS |
+| 2026-05-11 | [066-cash-below-threshold](./2026-05-11-066-cash-below-threshold.md) | 22 | backtest-engine-developer | ✅ | cash_below_threshold 트리거 구현 (02-t) — is_triggered() 메서드 + trigger_type/trigger_threshold 속성 + 10건 신규 테스트, 1116 PASS |
+| 2026-05-11 | [065-delisting-estimated](./2026-05-11-065-delisting-estimated.md) | 22 | backtest-engine-developer | ✅ | delisting_estimated 처리 — 상장폐지 예정 종목 종가×0.5 강제매도 + exit_reason + 6건 신규 테스트, 1106 PASS |
+| 2026-05-11 | [064-priority-3-methods](./2026-05-11-064-priority-3-methods.md) | 22 | backtest-engine-developer | ✅ | priority 3종 엔진 구현 (02-s) — market_cap_asc·volume_ratio_desc·price_change_desc + 17건 신규 테스트, 1100 PASS |
+| 2026-05-11 | [063-stop-trading-on-drawdown](./2026-05-11-063-stop-trading-on-drawdown.md) | 22 | backtest-engine-developer | ✅ | stop_trading_on_drawdown_pct MDD 거래중단 구현 (02-r) — _is_drawdown_limit_exceeded() + 13건 신규 테스트, 1083 PASS |
 | 2026-05-11 | (로드맵 갱신 — 문서 작업) | 22 | PM | ✅ | **Phase 22 계획 추가**: 2차 정밀 설계서 검증 미구현 6항목(02-r·02-s·02-t·13-u·01-l·06-l) 로드맵 반영 — 분모 211→217, 97.2% |
 | 2026-05-11 | [062-golden-real-price-fixture](./2026-05-11-062-golden-real-price-fixture.md) | 21 | backtest-engine-developer | ✅ | **Phase 21 마지막 step**: Golden 실 시세 fixture CSV 3종 + 시나리오 3건 + 13건 신규 테스트 (12-l) — 1412 PASS |
 | 2026-05-11 | [061-ma-alignment-rsi-cross-conditions](./2026-05-11-061-ma-alignment-rsi-cross-conditions.md) | 21 | condition-author | ✅ | ma_alignment (삼선 정렬, 03-o) + rsi_cross (RSI 크로스, 03-p) 구현 + 20건 신규 테스트 — 1399 PASS |

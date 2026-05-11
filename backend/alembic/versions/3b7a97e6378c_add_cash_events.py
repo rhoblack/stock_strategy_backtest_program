@@ -5,16 +5,16 @@ Revises: 32f5636ac93e
 Create Date: 2026-05-10 06:03:09.955623
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "3b7a97e6378c"
-down_revision: Union[str, Sequence[str], None] = "32f5636ac93e"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "32f5636ac93e"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
