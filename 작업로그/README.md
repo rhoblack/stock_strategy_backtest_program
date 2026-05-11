@@ -59,8 +59,12 @@
 | 16 | 데이터 파이프라인 완성 + 시장데이터 API (HistoricalBackfillJob / DailyUpdateJob / PykrxProvider / 종목검색 API + watchlists CRUD) — test-engineer 🟢 ship-go | ✅ 완료 (4 step) |
 | 17 | Export + API 잔존 완성 (trades.csv 컬럼 정합화 + ZIP 파일명 + trades API 응답 동기화) — test-engineer 🟢 ship-go | ✅ 완료 (2/2 step, 🟢 ship-go) |
 | 18 | 프론트엔드 UI 잔존 완성 (공통 컴포넌트 + BacktestRunPage + StrategyComparePage + 백테스트 결과 UI) | ✅ 완료 (4/4 step, 🟢 ship-go) |
+| 19 | 테스트 완성 + E2E (data_pipeline 통합 테스트 + Playwright E2E) | ✅ 완료 (2/2 step, 🟢 ship-go) |
 
-**현재 작업 중**: 없음. **Phase 18 완료 (🟢 ship-go)** — 249 vitest PASS / 1360 pytest PASS / 08번 100% ✅ / 11번 100% ✅ / UI 카테고리 100% ✅. 다음 단계는 Phase 19 (테스트 완성 + E2E, step 058~059) — data_pipeline 통합 테스트 + 프론트 E2E (Playwright).
+**현재 작업 중**: 없음. **Phase 19 완료 (🟢 ship-go)** — 5 E2E PASS / 249 vitest PASS / 1379 pytest PASS / 검증(12) 카테고리 100% ✅ / 종합 207/212 (97.64%). 다음 단계는 Phase 20 (최종 검증 + 문서화, step 060) — 전체 회귀 검증 + 설계서 최종 동기화.
+
+**Follow-up (Phase 19 → Phase 20 인계)**:
+- `test_phase13_export_cancel_e2e.py::TestAlembicRevisionChain` 2건 경로 하드코딩 버그 — `Path(__file__).resolve().parents[N] / "alembic"` 방식으로 수정 필요 (test-engineer 권고). Phase 20 step 060 또는 선행 fix step으로 처리.
 
 > 위 Phase 1~7 표는 **자체 정의한 step 기준** 완료 표시입니다. **상세설계서 14개 문서 기준으로는 데모 수준**이며 핵심 미구현 다수가 있습니다.
 > 상세 비교는 [`리뷰/2026-05-10-010-외부코드리뷰.md`](../리뷰/2026-05-10-010-외부코드리뷰.md) 참조 (외부 리뷰 + 메인 세션 검증 완료).
@@ -340,6 +344,19 @@ Phase 17 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" �
 - ✅ test-engineer 검증: 249 vitest PASS / 1360 pytest PASS / ruff All checks passed / 골든 9지표 frozen 유지 / UI 정책(08번 §7·§8·§9) 코드 검증 통과 / **UI 카테고리 100%** ✅
 
 Phase 18 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
+
+---
+
+## Phase 19 완료 ✅ (2/2 step + test-engineer 🟢 ship-go)
+
+### 완료 step
+- ✅ 058 data_pipeline 통합 테스트 19건 (BackfillCheckpoint/DailyUpdate/PykrxProvider/AdjustedPrice/RateLimiter/Scheduler) — 12-j 해소, 1379 PASS
+- ✅ 059 Playwright E2E 5건 (전략 목록/빌더/백테스트 실행/결과 탭/비교 페이지) — 12-k 해소, 249 vitest PASS
+- ✅ test-engineer 검증: 5 E2E PASS / 249 vitest PASS / 1379 pytest PASS / 검증(12) 카테고리 100% ✅ — 🟢 ship-go
+
+### Phase 19 달성: 12번 문서 100% ✅ (11/11), 종합 207/212 (97.64%)
+
+Phase 19 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 
 ---
 
