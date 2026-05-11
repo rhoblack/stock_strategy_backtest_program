@@ -24,7 +24,14 @@ from app.portfolio.position import Position
 
 
 class CashManager:
-    """전략 JSON의 cash_management.shortage_rule 한 묶음을 받아 동작."""
+    """전략 JSON의 cash_management.shortage_rule 한 묶음을 받아 동작.
+
+    지원 trigger.type (02번 §9):
+        - "cash_below_daily_buy_budget" (기존): 매수 예산 미만 시 발동.
+          handle_shortage에 required_cash = 당일 매수 예산을 전달.
+        - "cash_below_threshold" (02-t, step 066): 예수금이 절대값 threshold
+          미만이면 발동. shortage_rule.trigger.threshold 값(원 단위) 필수.
+    """
 
     def __init__(
         self,
@@ -47,9 +54,14 @@ class CashManager:
 
         if not rule or not rule.get("enabled", True):
             self._enabled = False
+            self._trigger_type = "cash_below_daily_buy_budget"
+            self._trigger_threshold: float | None = None
             return
         self._enabled = True
         shortage = rule.get("shortage_rule", {})
+        trigger = shortage.get("trigger", {})
+        self._trigger_type: str = trigger.get("type", "cash_below_daily_buy_budget")
+        self._trigger_threshold = trigger.get("threshold", None)
         self._action = shortage.get("action", {})
         self._target = shortage.get("target_selection", {"method": "lowest_return"})
         self._repeat = bool(shortage.get("repeat_until_cash_sufficient", False))
@@ -57,6 +69,42 @@ class CashManager:
     @property
     def enabled(self) -> bool:
         return self._enabled
+
+    @property
+    def trigger_type(self) -> str:
+        """trigger.type 반환 (02-t, step 066)."""
+        return self._trigger_type
+
+    @property
+    def trigger_threshold(self) -> float | None:
+        """cash_below_threshold 트리거의 절대값 threshold (원 단위, step 066)."""
+        return self._trigger_threshold
+
+    def is_triggered(self, portfolio: Portfolio, required_cash: float) -> bool:
+        """트리거 조건 충족 여부 평가 (02-t, step 066).
+
+        Parameters
+        ----------
+        portfolio : Portfolio
+            현재 포트폴리오.
+        required_cash : float
+            매수에 필요한 현금 (cash_below_daily_buy_budget 트리거 전용).
+
+        Returns
+        -------
+        bool
+            True이면 handle_shortage 발동 조건 충족.
+        """
+        if not self._enabled:
+            return False
+        if self._trigger_type == "cash_below_threshold":
+            threshold = self._trigger_threshold
+            if threshold is None:
+                # threshold 미지정 시 발동 안 함 (설계 오류 — 보수적 처리)
+                return False
+            return portfolio.cash < threshold
+        # default: cash_below_daily_buy_budget
+        return portfolio.cash < required_cash
 
     def handle_shortage(
         self,
@@ -69,15 +117,27 @@ class CashManager:
 
         price_provider(symbol, on_date) → float — 매도 체결 raw price 산출.
         ExecutionModel이 주입되어 있으면 이 raw price에 슬리피지+호가+세금을 적용.
+
+        Step 066 (02-t): trigger 타입에 따라 발동 조건이 달라진다.
+            - cash_below_daily_buy_budget: portfolio.cash < required_cash
+            - cash_below_threshold: portfolio.cash < self._trigger_threshold
         """
-        if not self._enabled or portfolio.cash >= required_cash:
+        if not self._enabled:
+            return []
+        if not self.is_triggered(portfolio, required_cash):
             return []
 
         events: list[dict] = []
         sell_fraction = float(self._action.get("sell_fraction", 0.25))
         method = self._target.get("method", "lowest_return")
 
-        while portfolio.cash < required_cash:
+        # 루프 종료 조건: trigger 타입에 따라 "충분" 기준이 다름.
+        # cash_below_threshold: cash >= threshold이면 충분.
+        # cash_below_daily_buy_budget: cash >= required_cash이면 충분.
+        def _is_still_short() -> bool:
+            return self.is_triggered(portfolio, required_cash)
+
+        while _is_still_short():
             target = self._select_position(portfolio, method)
             if target is None:
                 break
