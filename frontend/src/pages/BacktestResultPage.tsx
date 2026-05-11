@@ -24,6 +24,7 @@ import TradesTable, {
 import { DrawdownChart, CashChart, PositionsCountChart, VolumeChart, BenchmarkCompareChart } from "../components/charts";
 import { SummaryCard as Card } from "../components/ui";
 import MonthlyReturnChart, { type MonthlyReturn } from "../features/backtest-result/components/MonthlyReturnChart";
+import SurvivalBiasPanel from "../features/backtest-result/components/SurvivalBiasPanel";
 
 /**
  * 백테스트 결과 페이지 — 08번 §3·§4 정합 6 탭 구조.
@@ -75,6 +76,24 @@ export default function BacktestResultPage() {
       }
     }
     return Array.from(seen.entries()).map(([symbol, name]) => ({ symbol, name }));
+  }, [tradesWrap]);
+
+  // 생존편향 영향 분석 (06-l): trades.executions에서 delisting 관련 건수 집계
+  const survivalBiasInfo = useMemo(() => {
+    if (!tradesWrap) return { delistingCount: 0, estimatedCount: 0 };
+    let delistingCount = 0;
+    let estimatedCount = 0;
+    for (const tg of tradesWrap.items) {
+      for (const exec of tg.executions) {
+        if (exec.exit_reason === "delisting") {
+          delistingCount++;
+        } else if (exec.exit_reason === "delisting_estimated" || exec.exit_reason === "force_sell_delisting_estimated") {
+          delistingCount++;
+          estimatedCount++;
+        }
+      }
+    }
+    return { delistingCount, estimatedCount };
   }, [tradesWrap]);
 
   // 종목 선택을 chart-data query로 전달
@@ -136,6 +155,7 @@ export default function BacktestResultPage() {
           onSymbolChange={handleSymbolChange}
           visibleRange={tradeRange}
           runId={id}
+          survivalBias={survivalBiasInfo}
         />
       )}
 
@@ -186,6 +206,7 @@ function SummarySection({
   onSymbolChange,
   visibleRange,
   runId,
+  survivalBias,
 }: {
   summary: NonNullable<ReturnType<typeof useBacktestSummary>["data"]>["summary"] | undefined;
   chartData: ReturnType<typeof useChartData>["data"];
@@ -194,6 +215,7 @@ function SummarySection({
   onSymbolChange: (s: string | null) => void;
   visibleRange: VisibleRange | null;
   runId: number | null;
+  survivalBias: { delistingCount: number; estimatedCount: number };
 }) {
   return (
     <>
@@ -216,6 +238,13 @@ function SummarySection({
           />
         </section>
       )}
+
+      {/* 생존편향 영향 분석 (06-l, step 068) */}
+      <SurvivalBiasPanel
+        delistingCount={survivalBias.delistingCount}
+        estimatedCount={survivalBias.estimatedCount}
+        newListingCount={null}
+      />
 
       <section aria-label="다운로드" style={{ marginTop: 24 }}>
         <h2 style={{ fontSize: 15, fontWeight: 600 }}>다운로드</h2>
