@@ -31,6 +31,15 @@ from app.data_pipeline.jobs.daily_update import (
     DailyUpdateJob,
 )
 from app.data_pipeline.jobs.historical_backfill import (
+    ALL_STAGES,
+    STAGE_ADJUSTED_PRICES,
+    STAGE_CALENDAR,
+    STAGE_CORPORATE_ACTIONS,
+    STAGE_DAILY_PRICES,
+    STAGE_MARKET_CAP,
+    STAGE_SYMBOLS,
+    STAGE_VALIDATE,
+    BackfillCheckpoint,
     HistoricalBackfillConfig,
     HistoricalBackfillJob,
 )
@@ -52,6 +61,8 @@ from app.data_pipeline.jobs.universe_snapshot import (
 )
 
 __all__ = [
+    "ALL_STAGES",
+    "BackfillCheckpoint",
     "BaseJob",
     "CorporateActionApplyConfig",
     "CorporateActionApplyJob",
@@ -67,6 +78,13 @@ __all__ = [
     "MissingDataCheckConfig",
     "MissingDataCheckJob",
     "MissingDataEntry",
+    "STAGE_ADJUSTED_PRICES",
+    "STAGE_CALENDAR",
+    "STAGE_CORPORATE_ACTIONS",
+    "STAGE_DAILY_PRICES",
+    "STAGE_MARKET_CAP",
+    "STAGE_SYMBOLS",
+    "STAGE_VALIDATE",
     "UniverseSnapshotConfig",
     "UniverseSnapshotJob",
     "compute_config_hash",
