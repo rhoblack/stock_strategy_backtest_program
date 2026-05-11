@@ -56,9 +56,9 @@
 | 13 | 정확성 잔존 + Export + 운영 (KRW Decimal / symbol_performance / API 잔존 / 카탈로그 정식화 / alembic 정상화) — test-engineer 🟢 ship-go | ✅ 완료 (7 step) |
 | 14 | 조건 추가 9종 (avg_trading_value/macd_cross/new_high_breakout/bullish_candle 등 13→21종) — test-engineer 🟢 ship-go | ✅ 완료 (4 step) |
 | 15 | PositionSizer 확장 + buy_skipped_cash_shortage event + trade_group 단위 익절/손절 — test-engineer 🟢 ship-go | ✅ 완료 (3 step) |
-| 16 | 데이터 파이프라인 완성 + 시장데이터 API (HistoricalBackfillJob / DailyUpdateJob / PykrxProvider / 종목검색 API) | ⬜ 미시작 |
+| 16 | 데이터 파이프라인 완성 + 시장데이터 API (HistoricalBackfillJob / DailyUpdateJob / PykrxProvider / 종목검색 API + watchlists CRUD) | ✅ 완료 (4 step) — test-engineer 검증 대기 |
 
-**현재 작업 중**: 없음. **데모 MVP 완료 / 상세설계 MVP 미완료** ⚠️ (리뷰 011 **Critical 5/5 모두 해소** + 외부 4.7 일괄 — 신뢰성 기반 정합화 완료. 다음 단계는 시장데이터/복수종목 트랙)
+**현재 작업 중**: 없음. **Phase 16 완료 — test-engineer 검증 대기** (step 051: 종목 검색 API + watchlists CRUD / 1330 PASS). 다음 단계는 test-engineer Phase 16 검증 후 Phase 17 (Export + API 잔존 완성).
 
 > 위 Phase 1~7 표는 **자체 정의한 step 기준** 완료 표시입니다. **상세설계서 14개 문서 기준으로는 데모 수준**이며 핵심 미구현 다수가 있습니다.
 > 상세 비교는 [`리뷰/2026-05-10-010-외부코드리뷰.md`](../리뷰/2026-05-10-010-외부코드리뷰.md) 참조 (외부 리뷰 + 메인 세션 검증 완료).
@@ -294,6 +294,18 @@ Phase 14 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" �
 - ✅ test-engineer 검증: 1232 PASS / 0 FAIL / ruff All checks passed / 골든 9지표 frozen 유지 / 13.17 acceptance 전 항목 통과 / e2e 6건 신규 / **05번 문서 100%** ✅, **04-p 해소**
 
 Phase 15 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
+
+---
+
+## Phase 16 완료 (4/4 step) — test-engineer 검증 대기
+
+### 완료 step
+- ✅ 048 HistoricalBackfillJob 7단계 + BackfillCheckpoint + RateLimiter (14-l, 1258 PASS)
+- ✅ 049 DailyUpdateJob 증분 수집 + MissingDataCheckJob 연동 (14-m, 1265 PASS)
+- ✅ 050 PykrxProvider 완전 구현 (06-j, 1279 PASS) — 06번 91%→100% ✅
+- ✅ 051 종목 검색 API + watchlists CRUD (06-k·10-s·07-q, 1330 PASS) — 07번 100% ✅
+
+Phase 16 전체 계획은 [`로드맵.md`](../로드맵.md) "Phase 로드맵" 참조.
 
 ---
 
