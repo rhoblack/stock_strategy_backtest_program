@@ -90,6 +90,14 @@ class BacktestConfig:
     # "fixed_amount" / "equal_weight" 방식에서는 무시한다.
     sizing_ratio: float | None = None
 
+    # === 리스크 관리 (02-r / 02_strategy_json_schema_design.md §10) ===
+    # stop_trading_on_drawdown_pct: 포트폴리오 MDD가 N%를 초과하면 신규 매수 중단.
+    # 기준: (peak_equity - current_equity) / peak_equity × 100 (양수 %).
+    # 초과 시 당일 신규 매수 후보 전체 skip (보유 포지션은 그대로 유지).
+    # default=None → 한도 미적용 (기존 동작 보존 — Phase 1 골든 9지표 frozen).
+    # 경계값: 정확히 임계값과 같으면 차단 (보수적 — "초과"가 아닌 "이상" 차단).
+    stop_trading_on_drawdown_pct: float | None = None
+
     # === 상한가/하한가 차단 (04-o + 정확성 정책 13.4.3 / 13-q) ===
     # KOSPI/KOSDAQ 가격 제한폭 ±30% 정책 (정확성 정책 13.4.3).
     # default 보수: 상한가 매수 / 하한가 매도 모두 차단 (skip + event_log).
@@ -224,3 +232,20 @@ class BacktestConfig:
                 f"limit_pct는 (0, 1) 범위 내여야 합니다 (KOSPI/KOSDAQ 한도 0.30): "
                 f"{self.limit_pct}"
             )
+
+        # === stop_trading_on_drawdown_pct 검증 (02-r) ===
+        # None이면 무제한 (기존 동작 보존). 명시 시 (0, 100] 범위 강제.
+        # 0이면 항상 차단이라 의미 없음. 100 초과는 실질적으로 차단 불가.
+        if self.stop_trading_on_drawdown_pct is not None:
+            if isinstance(self.stop_trading_on_drawdown_pct, bool) or not isinstance(
+                self.stop_trading_on_drawdown_pct, (int, float)
+            ):
+                raise ValueError(
+                    f"stop_trading_on_drawdown_pct는 숫자여야 합니다: "
+                    f"{type(self.stop_trading_on_drawdown_pct).__name__}"
+                )
+            if not (0 < self.stop_trading_on_drawdown_pct <= 100):
+                raise ValueError(
+                    f"stop_trading_on_drawdown_pct는 (0, 100] 범위여야 합니다: "
+                    f"{self.stop_trading_on_drawdown_pct}"
+                )

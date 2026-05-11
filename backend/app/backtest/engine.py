@@ -170,6 +170,7 @@ EVENT_REASON_DAILY_BUY_BUDGET = "skip_daily_buy_budget"    # 04-m
 EVENT_REASON_MAX_GAP = "skip_max_gap"                      # 13.4.1 — 갭 매수 차단
 EVENT_REASON_FORCE_SELL_DELISTED = "force_sell_delisted"   # 13.4.5 — 상장폐지 강제 매도
 EVENT_REASON_CASH_SHORTAGE = "buy_skipped_cash_shortage"  # 05-j — CashManager 후에도 예산 부족
+EVENT_REASON_DRAWDOWN_LIMIT = "skip_drawdown_limit"       # 02-r — MDD 초과 시 신규 매수 중단
 
 
 class BacktestEngine:
@@ -384,6 +385,34 @@ class BacktestEngine:
             # default priority_method="none"이면 입력 순서(symbol ASC) 그대로 반환.
             entry_candidates = self._apply_priority(entry_candidates)
             held_at_open_set = set(held_at_open)
+
+            # === 2-a. MDD 거래 중단 체크 (02-r, step 063) ===
+            # 신규 매수 후보 처리 직전에 포트폴리오 MDD를 평가.
+            # look-ahead bias 없음: peak_equity는 전 거래일까지 갱신된 최고점.
+            # 당일 보유 포지션 평가(exit_position) 완료 후, 매수 처리 직전에 체크.
+            # 경계값: drawdown >= threshold 이면 차단 (보수적 — "이상"으로 해석).
+            if self._is_drawdown_limit_exceeded(peak_equity):
+                # 후보 전체를 event_log에 기록 후 skip
+                current_equity = self.portfolio.total_equity()
+                current_drawdown = (
+                    (peak_equity - current_equity) / peak_equity * 100
+                    if peak_equity > 0
+                    else 0.0
+                )
+                for symbol, _row in entry_candidates:
+                    self._log_event(
+                        date=today,
+                        symbol=symbol,
+                        event_type=EVENT_TYPE_SKIP,
+                        reason=EVENT_REASON_DRAWDOWN_LIMIT,
+                        detail={
+                            "current_drawdown_pct": round(current_drawdown, 4),
+                            "stop_trading_on_drawdown_pct": self.config.stop_trading_on_drawdown_pct,
+                            "peak_equity": peak_equity,
+                            "current_equity": current_equity,
+                        },
+                    )
+                entry_candidates = []
             # 022 — 한도 적용 (priority 정렬 순서 유지). default 모두 None이면
             # 입력을 그대로 반환 (021 동작 보존).
             entry_candidates = self._apply_position_limits(
@@ -907,6 +936,37 @@ class BacktestEngine:
                 "detail": dict(detail) if detail else {},
             }
         )
+
+    def _is_drawdown_limit_exceeded(self, peak_equity: int) -> bool:
+        """포트폴리오 MDD가 config.stop_trading_on_drawdown_pct 이상이면 True (02-r).
+
+        MDD(%) = (peak_equity - current_equity) / peak_equity × 100 (양수).
+        threshold 이상(>=)이면 신규 매수를 차단 (보수적 해석 — "초과"가 아닌 "이상").
+
+        look-ahead bias:
+            peak_equity는 전 거래일까지 누적된 최고점 (당일 보유 포지션 평가 이후,
+            daily equity 기록 이전 단계에서 호출되므로 look-ahead 없음).
+            current_equity = portfolio.total_equity() — 당일 adj_close 기준으로
+            update_market_price가 이미 완료된 값 사용.
+
+        Parameters
+        ----------
+        peak_equity
+            날짜 루프에서 관리하는 포트폴리오 최고점 자산 (initial_cash 이상).
+
+        Returns
+        -------
+        bool
+            True이면 신규 매수 전부 skip.
+        """
+        threshold = self.config.stop_trading_on_drawdown_pct
+        if threshold is None:
+            return False
+        if peak_equity <= 0:
+            return False
+        current_equity = self.portfolio.total_equity()
+        drawdown_pct = (peak_equity - current_equity) / peak_equity * 100
+        return drawdown_pct >= threshold
 
     def _is_limit_up(self, row: pd.Series) -> bool:
         """row가 상한가인지 판정 (정확성 정책 13.4.3).
