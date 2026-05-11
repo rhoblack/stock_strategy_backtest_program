@@ -1,4 +1,4 @@
-"""price_vs_ma + ma_cross 조건 테스트."""
+"""price_vs_ma + ma_cross + ma_alignment 조건 테스트."""
 
 import numpy as np
 import pandas as pd
@@ -6,8 +6,10 @@ import pytest
 
 from app.core.exceptions import InvalidOperatorError
 from app.strategy.conditions.moving_average import (
+    MA_ALIGNMENT_META,
     MA_CROSS_META,
     PRICE_VS_MA_META,
+    ma_alignment,
     ma_cross,
     price_vs_ma,
 )
@@ -125,3 +127,113 @@ def test_ma_cross_meta_required_fields():
         assert key in MA_CROSS_META
     assert MA_CROSS_META["requires_position"] is False
     assert "exit_position" not in MA_CROSS_META["allowed_in"]
+
+
+# === ma_alignment ===
+
+
+def _df_aligned(n_warmup: int = 80) -> pd.DataFrame:
+    """상승 정렬 (5일MA > 20일MA > 60일MA) 이 확실하게 성립하는 DataFrame.
+
+    n_warmup일간 단조 상승하는 가격 시계열.
+    """
+    prices = [float(i) for i in range(1, n_warmup + 1)]
+    return pd.DataFrame({"adj_close": prices})
+
+
+def _df_descending(n_warmup: int = 80) -> pd.DataFrame:
+    """하락 정렬 (5일MA < 20일MA < 60일MA) 이 확실하게 성립하는 DataFrame."""
+    prices = [float(n_warmup - i) for i in range(n_warmup)]
+    return pd.DataFrame({"adj_close": prices})
+
+
+def test_ma_alignment_bullish_detected():
+    """단조 상승 시계열에서 bullish 정렬이 감지되어야 함."""
+    df = _df_aligned(n_warmup=80)
+    result = ma_alignment(df, {"short_period": 5, "mid_period": 20, "long_period": 60, "direction": "bullish"})
+    # 충분한 warm-up 후 (마지막 구간) bullish 정렬 True
+    assert result.iloc[-1] is True or bool(result.iloc[-1]) is True
+
+
+def test_ma_alignment_bearish_detected():
+    """단조 하락 시계열에서 bearish 정렬이 감지되어야 함."""
+    df = _df_descending(n_warmup=80)
+    result = ma_alignment(df, {"short_period": 5, "mid_period": 20, "long_period": 60, "direction": "bearish"})
+    assert bool(result.iloc[-1]) is True
+
+
+def test_ma_alignment_bullish_false_when_descending():
+    """하락 시계열에서 bullish 정렬은 False여야 함."""
+    df = _df_descending(n_warmup=80)
+    result = ma_alignment(df, {"short_period": 5, "mid_period": 20, "long_period": 60, "direction": "bullish"})
+    assert bool(result.iloc[-1]) is False
+
+
+def test_ma_alignment_bearish_false_when_ascending():
+    """상승 시계열에서 bearish 정렬은 False여야 함."""
+    df = _df_aligned(n_warmup=80)
+    result = ma_alignment(df, {"short_period": 5, "mid_period": 20, "long_period": 60, "direction": "bearish"})
+    assert bool(result.iloc[-1]) is False
+
+
+def test_ma_alignment_nan_before_warmup():
+    """long_period 미만 구간은 NaN → False."""
+    df = _df_aligned(n_warmup=80)
+    result = ma_alignment(df, {"short_period": 5, "mid_period": 20, "long_period": 60, "direction": "bullish"})
+    # 인덱스 0~58(60-1-1) 은 long_ma가 NaN이라 False
+    assert (~result.iloc[:59]).all()
+
+
+def test_ma_alignment_default_params():
+    """기본 파라미터 (5/20/60, bullish) 가 정상 동작."""
+    df = _df_aligned(n_warmup=80)
+    result = ma_alignment(df, {})
+    assert bool(result.iloc[-1]) is True
+
+
+def test_ma_alignment_invalid_period_order_raises():
+    """short >= mid 또는 mid >= long이면 ValueError."""
+    df = _df_aligned()
+    with pytest.raises(ValueError, match="short_period"):
+        ma_alignment(df, {"short_period": 20, "mid_period": 5, "long_period": 60})
+    with pytest.raises(ValueError, match="short_period"):
+        ma_alignment(df, {"short_period": 5, "mid_period": 60, "long_period": 20})
+    with pytest.raises(ValueError, match="short_period"):
+        ma_alignment(df, {"short_period": 5, "mid_period": 5, "long_period": 60})
+
+
+def test_ma_alignment_invalid_direction_raises():
+    """허용되지 않는 direction은 ValueError."""
+    df = _df_aligned()
+    with pytest.raises(ValueError, match="direction"):
+        ma_alignment(df, {"direction": "sideways"})
+
+
+def test_ma_alignment_no_lookahead_bias():
+    """미래 데이터 추가로 과거 결과가 변하지 않아야 함.
+
+    단조 상승 시계열 1~80과 1~90의 ma_alignment 결과가 동일 인덱스에서 같아야 함.
+    """
+    prices_short = list(range(1, 81))
+    prices_long = list(range(1, 91))
+    df_short = pd.DataFrame({"adj_close": [float(p) for p in prices_short]})
+    df_long = pd.DataFrame({"adj_close": [float(p) for p in prices_long]})
+
+    cond = {"short_period": 5, "mid_period": 20, "long_period": 60, "direction": "bullish"}
+    res_short = ma_alignment(df_short, cond)
+    res_long = ma_alignment(df_long, cond)
+
+    np.testing.assert_array_equal(
+        res_short.to_numpy(),
+        res_long.iloc[: len(res_short)].to_numpy(),
+    )
+
+
+def test_ma_alignment_meta_required_fields():
+    for key in ("type", "category", "requires_position", "name", "sentence_template", "parameters", "allowed_in"):
+        assert key in MA_ALIGNMENT_META, f"META에 {key} 누락"
+    assert MA_ALIGNMENT_META["requires_position"] is False
+    assert "exit_position" not in MA_ALIGNMENT_META["allowed_in"]
+    assert "exit_signal" not in MA_ALIGNMENT_META["allowed_in"]
+    assert "entry" in MA_ALIGNMENT_META["allowed_in"]
+    assert "filters" in MA_ALIGNMENT_META["allowed_in"]

@@ -99,6 +99,7 @@ UI 탭/차트 확장은 위 6개 이후 (데이터 계층 흔들리면 UI 갈아
 
 | 날짜 | 파일 | Phase | 에이전트 | 상태 | 한줄 요약 |
 |---|---|---|---|---|---|
+| 2026-05-11 | [061-ma-alignment-rsi-cross-conditions](./2026-05-11-061-ma-alignment-rsi-cross-conditions.md) | 21 | condition-author | ✅ | ma_alignment (삼선 정렬, 03-o) + rsi_cross (RSI 크로스, 03-p) 구현 + 20건 신규 테스트 — 1399 PASS |
 | 2026-05-11 | [060-final-review-and-sync](./2026-05-11-060-final-review-and-sync.md) | 20 | PM (메인 세션) | ✅ | **Phase 20 마지막 step**: 04-q [x] + TestAlembicRevisionChain fix + 208/208 = 100% ✅ — 1379 PASS / 249 PASS |
 | 2026-05-11 | [059-playwright-e2e-tests](./2026-05-11-059-playwright-e2e-tests.md) | 19 | frontend-developer | ✅ | **Phase 19 마지막 step**: Playwright E2E 5건 (12-k) — page.route() API 모킹 / 5/5 PASS + 249 vitest PASS |
 | 2026-05-11 | [058-data-pipeline-integration-tests](./2026-05-11-058-data-pipeline-integration-tests.md) | 19 | backtest-engine-developer | ✅ | data_pipeline 통합 테스트 19건 (12-j) — BackfillCheckpoint/DailyUpdate/PykrxProvider/AdjustedPrice/RateLimiter/Scheduler — 1379 PASS |

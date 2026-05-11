@@ -3,6 +3,7 @@
 수록 조건:
     - price_vs_ma: 가격이 이동평균보다 위/아래
     - ma_cross: 골든크로스 / 데드크로스
+    - ma_alignment: 삼선 정렬 (단기 > 중기 > 장기 또는 반대)
 """
 
 from __future__ import annotations
@@ -175,4 +176,114 @@ MA_CROSS_META: dict = {
         },
     ],
     "allowed_in": ["entry", "exit_signal"],
+}
+
+
+# ============================================================================
+# ma_alignment
+# ============================================================================
+
+
+@condition_registry.register(
+    "ma_alignment",
+    requires_position=False,
+    category="moving_average",
+)
+def ma_alignment(df: pd.DataFrame, condition: dict) -> pd.Series:
+    """단기·중기·장기 이동평균이 정렬된 날 True (삼선 정렬).
+
+    상승 정렬(bullish): short_ma > mid_ma > long_ma
+    하락 정렬(bearish): short_ma < mid_ma < long_ma
+
+    look-ahead bias 없음: 각 MA는 rolling(window) 계산이며 당일까지의 데이터만
+    포함한다. MA 간 대소 비교는 당일 값끼리의 관계이므로 미래 참조 없음.
+
+    파라미터:
+        short_period (int): 단기 이동평균 기간. 기본 5.
+        mid_period (int): 중기 이동평균 기간. 기본 20.
+        long_period (int): 장기 이동평균 기간. 기본 60.
+        direction (str): "bullish" 또는 "bearish".
+        price_field (str): 가격 컬럼명. 기본 "adj_close" (정확성 정책 13.7).
+    """
+    short_period = condition.get("short_period", 5)
+    mid_period = condition.get("mid_period", 20)
+    long_period = condition.get("long_period", 60)
+    direction = condition.get("direction", "bullish")
+    price_field = condition.get("price_field", "adj_close")
+
+    if not (short_period < mid_period < long_period):
+        raise ValueError(
+            f"short_period({short_period}) < mid_period({mid_period}) < long_period({long_period}) "
+            "순서를 만족해야 합니다"
+        )
+    if direction not in ("bullish", "bearish"):
+        raise ValueError(
+            f"지원하지 않는 direction입니다: {direction!r} (허용: 'bullish', 'bearish')"
+        )
+
+    series = df[price_field]
+    short_ma = moving_average(series, short_period)
+    mid_ma = moving_average(series, mid_period)
+    long_ma = moving_average(series, long_period)
+
+    if direction == "bullish":
+        return (short_ma > mid_ma) & (mid_ma > long_ma)
+    # direction == "bearish"
+    return (short_ma < mid_ma) & (mid_ma < long_ma)
+
+
+MA_ALIGNMENT_META: dict = {
+    "type": "ma_alignment",
+    "category": "moving_average",
+    "requires_position": False,
+    "name": "삼선 정렬",
+    "description": "단기·중기·장기 이동평균이 정렬된 구간을 선별합니다 (상승: 단기>중기>장기, 하락: 반대).",
+    "sentence_template": "{short_period}일·{mid_period}일·{long_period}일 이동평균이 {direction_label} 정렬",
+    "parameters": [
+        {
+            "name": "short_period",
+            "label": "단기 기간(일)",
+            "input_type": "number",
+            "default": 5,
+            "min": 2,
+            "max": 100,
+        },
+        {
+            "name": "mid_period",
+            "label": "중기 기간(일)",
+            "input_type": "number",
+            "default": 20,
+            "min": 3,
+            "max": 200,
+        },
+        {
+            "name": "long_period",
+            "label": "장기 기간(일)",
+            "input_type": "number",
+            "default": 60,
+            "min": 5,
+            "max": 500,
+        },
+        {
+            "name": "direction",
+            "label": "정렬 방향",
+            "input_type": "select",
+            "options": [
+                {"label": "상승 정렬 (단기>중기>장기)", "value": "bullish"},
+                {"label": "하락 정렬 (단기<중기<장기)", "value": "bearish"},
+            ],
+            "default": "bullish",
+        },
+        {
+            "name": "price_field",
+            "label": "가격 기준",
+            "input_type": "select",
+            "options": [
+                {"label": "수정 종가", "value": "adj_close"},
+                {"label": "수정 시가", "value": "adj_open"},
+            ],
+            "default": "adj_close",
+        },
+    ],
+    "allowed_in": ["entry", "filters"],
 }
